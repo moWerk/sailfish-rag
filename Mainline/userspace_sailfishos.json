@@ -251,6 +251,38 @@
         "confidence": "inferred",
         "date": "2026-10-26",
         "source": "Pro1-X port repo port/notes/research/research-sensors-camera.md, port/notes/sensors-design.md"
+      },
+      {
+        "title": "QtSensors finds sensorfw only through Sensors.conf",
+        "general": "QtSensors' sensorfw plugin registers its backends only from the [Default] section of /etc/xdg/QtProject/Sensors.conf (QAccelerometer=sensorfw.accelerometer and so on). Hybris ports get it from droid-hal-configs; a mainline port that does not use droid-hal-configs must ship it, or every app and lipstick logs 'Could not connect to the <type> sensor backend' and never asks sensorfwd for a sensor, while sensorfwd itself works.",
+        "instance": "Pro1-X SailfishOS 5.2.0.22: Dodger got null readings, lipstick no orientation; sensorfwd at --log-level=debug showed the SSC adaptor delivering samples and a sensortestapp client receiving them. Copying droid-hal-configs sparse/etc/xdg/QtProject/Sensors.conf fixed apps and auto-rotation (port commit fee23c2).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port repo github.com/moWerk/sailfishos-pro1x-mainline; device session 2026-10-28"
+      },
+      {
+        "title": "sensorfw availability comes from the hw-settings feature list",
+        "general": "sensorfwd's [available] section (20-sensors-default.conf) maps sensors to ssu-sysinfo hardware features (Feature_AccelerationSensor, Feature_ProximitySensor, ...), read from /usr/share/csd/settings.d/hw-settings.ini [features]. Without that file only Suspend and Reboot exist and every sensor is 'plugin not available'. The same list gates Settings items (auto brightness needs FeatureLightSensor) and the status-bar battery indicator.",
+        "instance": "Pro1-X 5.2.0.22: adding hw-settings.ini (port commit 8b6f01d) made sensorfw load all sensors; the battery indicator in the home screen bar appeared at the same time.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port repo github.com/moWerk/sailfishos-pro1x-mainline; device session 2026-10-28"
+      },
+      {
+        "title": "Settings pages that only device patterns install",
+        "general": "Jolla's per-device and consumer patterns, not the common one, pull several Settings packages: jolla-settings-networking-multisim (SIM cards), jolla-settings-system-orientation (Display > Orientation, the top-menu orientation lock, 'Rotating homescreen'), jolla-settings-system-sideloading. A port on patterns-sailfish-device-configuration-common must list them. jolla-settings-system-flashlight needs droidmedia (Android) and cannot be used on mainline.",
+        "instance": "Pro1-X 5.2.0.22, 2026-10-28, port commits 6ac21e8 and a2e16ce.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port repo github.com/moWerk/sailfishos-pro1x-mainline; device session 2026-10-28"
+      },
+      {
+        "title": "SSC sensors already report in the phone frame",
+        "general": "libssc readings from the Qualcomm Sensor Core are already rotated into the device frame by the SSC registry; a mount matrix taken from an IIO-based stack (iio-sensor-proxy ACCEL_MOUNT_MATRIX) can invert axes. Start from identity and verify by tilting (a tilt game, auto-rotation).",
+        "instance": "Pro1-X: the NixOS matrix -1,0,0,0,-1,0,0,0,1 inverted X (Dodger) and Y (Horizon) and turned auto-rotation upside down; identity in sensorfw's transformation_matrix (port commit 75609c2). Sensor chips per SSC attributes: lsm6ds3c accel/gyro, mmc56x3x magnetometer, TXC PA22A light/proximity (on-change).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port repo github.com/moWerk/sailfishos-pro1x-mainline; device session 2026-10-28"
       }
     ],
     "connectivity": [
