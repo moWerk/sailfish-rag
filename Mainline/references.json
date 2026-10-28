@@ -1,0 +1,922 @@
+{
+ "references": {
+  "note": "General mainlining guides outside postmarketOS, surveyed 2026-10-27 to find what a mainline phone guide usually covers and which lessons add to this corpus. Each source is credited with URL, owner and licence; lessons are paraphrased, not quoted. Lessons that add to a chapter were copied into that chapter's file with confidence reported and the URL as source (method.json, boot.json, kernel.json, display_input_power.json, firmware_remoteproc.json, hazards.json, upstreaming.json). Licences differ: kernel documentation is GPL-2.0, Bootlin material CC BY-SA 3.0 (adaptable with attribution), several wikis CC BY-SA 4.0, and many talks and blogs state no licence, so link rather than copy them. Not used: the postmarketOS wiki and its mirrors (excluded on purpose; postmarketOS was renamed Nura on 2026-09-27, wiki now wiki.nura.eco behind a bot wall), and sites that refuse automated readers or were unreachable or off-topic (lwn.net, source.puri.sm, elinux.org, wiki.mobian.org, linux-sunxi.org, opensource.rock-chips.com, www.phoronix.com, xdaforums.com, blog.realogs.in, saalimquadri.medium.com, wiki.manjaro.org, slideshare.net (Neil Armstrong ELC-E 2016 slides)). Second survey (2026-10-27): Qualcomm-specific mainline documentation, sources tagged topic \"qualcomm\"; sites whose robots.txt blocks AI crawlers were skipped (wiki.postmarketos.org, wiki.nura.eco (and nura.eco blog), postmarketos.org (blog) and gitlab.com/postmarketOS (pmaports), lwn.net, codeberg.org (libssc canonical repo), libssc.dylanvanassche.be (libssc docs), gitlab.freedesktop.org (libqmi, ModemManager, libcamera, iio-sensor-proxy sources), gitlab.collabora.com, ubports.com, ratatoskr.run (LKML/linux-arm-msm archive), patchew.org, old.linaro.org, www.phoronix.com, static.linaro.org (Linaro Connect slides), lore.kernel.org, www.linaro.org/blog/upstream-camera-support-for-qualcomm-platforms/, gitlab.com (sdm845-mainline q6voiced project page), ).",
+  "sources": [
+   {
+    "url": "https://docs.kernel.org/process/submitting-patches.html",
+    "owner": "Linux kernel community",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "Obtaining a tree, describing changes, splitting into logical patches, checkpatch, choosing recipients with get_maintainer.pl, DCO sign-off, canonical patch format, tags, responding to review, resending, b4.",
+    "strengths": "The authoritative upstream process; every other guide defers to it.",
+    "lessons": [
+     "One logical change per patch, and every patch in the series must build and boot on its own (bisectability).",
+     "Commit message explains the problem and the user-visible effect, in imperative mood; reference earlier commits by 12+ char hash plus subject.",
+     "Run scripts/checkpatch.pl and pick recipients with scripts/get_maintainer.pl instead of guessing.",
+     "Send plain-text mail via git send-email or b4; no attachments, no HTML.",
+     "Reply inline to review, bump the series version (v2, v3) with a per-version changelog below the --- line.",
+     "Wait about a week before pinging; never add Reviewed-by/Tested-by tags someone did not give explicitly.",
+     "Use git format-patch --base so reviewers know what the series applies on."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/process/coding-assistants.html",
+    "owner": "Linux kernel community",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "Kernel policy for AI coding assistants: attribution tag format, who may sign off, human responsibilities.",
+    "strengths": "Directly relevant to an LLM-driven mainlining workflow; defines the upstream-accepted disclosure form.",
+    "lessons": [
+     "An AI tool never adds Signed-off-by; only the human submitter certifies the DCO and owns the patch.",
+     "Disclose tool use with an Assisted-by: tag naming the model and any specialised analysis tools (not git/gcc).",
+     "The human must review all generated code, check licensing, build warning-free and pass checkpatch before sending.",
+     "State known limitations to maintainers rather than letting them discover them in review."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/devicetree/bindings/submitting-patches.html",
+    "owner": "Linux kernel community (DT maintainers)",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "How to submit DT binding and DTS patches: subject prefixes, patch ordering, schema validation, licensing of binding files, recipients.",
+    "strengths": "Short, concrete, enforced by maintainers; avoids the most common first-submission rejections.",
+    "lessons": [
+     "Binding patch goes first in the series, driver next, DTS last; bindings in their own patch with prefix 'dt-bindings: <dir>:'.",
+     "Bindings are YAML json-schema and must pass make dt_binding_check; new binding files are dual-licensed GPL-2.0-only OR BSD-2-Clause.",
+     "Every compatible used in a DTS (including the board's top-level compatible) must be documented in a binding first.",
+     "Always Cc devicetree@vger.kernel.org and the DT maintainers found by get_maintainer.pl."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/devicetree/bindings/writing-bindings.html",
+    "owner": "Linux kernel community (DT maintainers)",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "DOs and DON'Ts for writing DT bindings: completeness, compatibles and fallbacks, property naming, constraints, file naming.",
+    "strengths": "Captures reviewer expectations that are otherwise learned through rejected revisions.",
+    "lessons": [
+     "Describe the hardware completely, even parts no driver uses yet; never encode Linux driver details or configuration choices.",
+     "Compatibles are specific (SoC- or part-specific), never wildcards or family names; add a fallback only if software can really bind with it.",
+     "Reuse common properties and standard node names; vendor-prefix device-specific properties; use standard unit suffixes.",
+     "Constrain everything (counts, values, order): those constraints are the ABI.",
+     "Name the binding file after its compatible (vendor,device.yaml)."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/devicetree/bindings/dts-coding-style.html",
+    "owner": "Linux kernel community",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "DTS coding style: naming, node ordering, property ordering, formatting, SoC dtsi vs board dts split.",
+    "strengths": "Mechanical rules that make a board DTS review-ready on the first try.",
+    "lessons": [
+     "Nodes with unit address sorted by address; others alphabetically; &label overrides in the board file sorted alphabetically or in dtsi order.",
+     "Property order: compatible, reg, ranges, standard properties, vendor properties, then status last after a blank line.",
+     "Lowercase hex unit addresses without leading zeros; node names with dashes, labels with underscores.",
+     "SoC dtsi holds everything on the die (disabled where board-dependent); board-only hardware lives in the board dts."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/process/maintainer-soc.html",
+    "owner": "Linux kernel community (SoC maintainers)",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "How SoC/board patches flow from platform maintainers into the soc tree, DTS file naming hierarchy, ABI rules, dtbs_check requirements, PR timing.",
+    "strengths": "Explains where a phone DTS actually lands and why timing relative to the merge window matters.",
+    "lessons": [
+     "Board DTS goes to the platform (e.g. qcom, exynos) maintainer, not soc@kernel.org directly.",
+     "File naming: $soc.dtsi -> optional shared dtsi -> $soc-$vendor-$board.dts.",
+     "New boards must add no make dtbs_check warnings; check dt-check-style too.",
+     "Bindings are an ABI: a DT change that breaks older kernels needs the driver change first and must say so in the commit.",
+     "Platform maintainers collect patches early in the cycle (around rc1-rc4); posting during the merge window means waiting a cycle."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/devicetree/usage-model.html",
+    "owner": "Linux kernel community (Grant Likely, originally)",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "History of the flattened device tree, data model, machine identification via root compatible, runtime config via /chosen, device population.",
+    "strengths": "Best conceptual explanation of why DT exists and how the kernel consumes it.",
+    "lessons": [
+     "Root compatible lists the exact board first, then the SoC; this is how the kernel identifies the machine.",
+     "Research existing bindings before inventing one; duplicate incompatible bindings are a known historic mistake.",
+     "/chosen carries bootargs, stdout-path and initrd location; the bootloader may rewrite it.",
+     "Bus controllers (i2c, spi) populate their child nodes themselves; board code should not."
+    ]
+   },
+   {
+    "url": "https://docs.kernel.org/arch/arm64/booting.html",
+    "owner": "Linux kernel community (arm64 maintainers)",
+    "licence": "GPL-2.0 (kernel documentation)",
+    "covers": "Contract between bootloader and arm64 kernel: RAM setup, DTB placement, image header, CPU/MMU/cache state, timers, GIC setup, secondary CPU enable methods.",
+    "strengths": "Tells you exactly what a vendor bootloader must have done, so you know what to suspect when nothing prints.",
+    "lessons": [
+     "DTB must be 8-byte aligned and at most 2 MB; x0 holds its physical address.",
+     "Kernel is entered with MMU off and all CPUs at the same exception level; firmware must have programmed CNTFRQ.",
+     "Secondary cores come up via PSCI (preferred) or spin-table, declared in the DT cpu nodes; broken or non-standard PSCI is a common phone quirk.",
+     "GICv3 needs ICC_SRE set up by EL3 firmware; if it is not, the kernel hangs early.",
+     "arm64 kernels do not self-decompress; the bootloader must handle a compressed Image or you must pass Image(.gz) the way it expects."
+    ]
+   },
+   {
+    "url": "https://www.devicetree.org/specifications/",
+    "owner": "devicetree.org",
+    "licence": "Spec licence not stated on page (spec repo on GitHub)",
+    "covers": "The Devicetree Specification (v0.4, 2023): base syntax, standard properties and node names, FDT format.",
+    "strengths": "Normative reference for node names and standard properties cited by kernel binding reviews.",
+    "lessons": [
+     "Use the generic node names the spec lists (e.g. serial@, i2c@, regulator-) rather than chip names.",
+     "Treat the spec as the source for standard properties before inventing vendor ones."
+    ]
+   },
+   {
+    "url": "https://bootlin.com/pub/conferences/2016/elce/clement-arm64-soc-checklist/clement-arm64-soc-checklist.pdf",
+    "owner": "Bootlin (Gregory Clement), ELC 2016",
+    "licence": "CC BY-SA 3.0",
+    "covers": "Checklist for adding a new arm64 SoC: maintainers, trees and timing, DT layout per vendor directory, earlycon, IRQ controller, timer, UART, then clocks, pinmux, GPIO, and further drivers.",
+    "strengths": "The canonical ordered bring-up checklist; vendor-neutral and still structurally valid.",
+    "lessons": [
+     "Step 1 target is a shell from an initramfs with only earlycon, interrupt controller, timer and UART; submit that minimal support right away.",
+     "earlycon is mandatory on arm64: make sure the UART driver declares it and the DT's stdout-path points at it.",
+     "One <soc>.dtsi plus one <board>.dts per board in arch/arm64/boot/dts/<vendor>/, with a dtb- line in the Makefile.",
+     "No SoC-specific C under arch/arm64; everything is a driver in the right subsystem.",
+     "Know the subsystem maintainers (irqchip, clocksource, clk, pinctrl, gpio) because each driver goes through a different tree.",
+     "Then clocks (common clock framework, one provider node), pinctrl, GPIO, storage, in that order."
+    ]
+   },
+   {
+    "url": "https://bootlin.com/pub/conferences/2014/elce/petazzoni-soc-mainlining-lessons-learned/petazzoni-soc-mainlining-lessons-learned.pdf",
+    "owner": "Bootlin (Thomas Petazzoni), ELC-E 2014",
+    "licence": "CC BY-SA 3.0 (Bootlin materials)",
+    "covers": "Thirteen lessons from two years of mainlining Marvell Armada SoCs: submit early, community, reviewing others, staffing, older SoCs, absorption rate, DT binding stability, estimates.",
+    "strengths": "Experience-based process lessons, the social half of mainlining.",
+    "lessons": [
+     "Post early: internal polishing wastes time because reviewers will change your design anyway.",
+     "Track linux-next and -rc on your device so regressions surface while they are cheap to fix.",
+     "Review other people's patches on the same list; it builds trust and speeds your own reviews.",
+     "Do not break older hardware that shares drivers; maintainers care most about that.",
+     "Maintainers have a limited absorption rate: spread series across cycles, think two releases ahead.",
+     "Bindings for complex blocks take many iterations; get them right early since they become stable ABI.",
+     "Mainlining time is hard to estimate; review outcomes dominate the schedule."
+    ]
+   },
+   {
+    "url": "https://bootlin.com/pub/conferences/2016/collab-summit/petazzoni-upstreaming-hw-support-in-linux-kernel-why-how.pdf",
+    "owner": "Bootlin (Thomas Petazzoni), Collab Summit 2016",
+    "licence": "CC BY-SA 3.0 (Bootlin materials)",
+    "covers": "Why upstream (software debt, quality, longevity, control) and how (small focused team, community involvement, enabling others, right tooling).",
+    "strengths": "Good source for a short 'why mainline' chapter and for the tooling prerequisites.",
+    "lessons": [
+     "Upstream code is maintained by everyone afterwards; out-of-tree code is your debt forever.",
+     "If you do not upstream support for hardware, someone else may, with less of your input.",
+     "Use proper tools: a Linux box, plain SMTP for patches, IRC/Matrix presence; corporate mail clients break patches.",
+     "Publish what you know (datasheets, findings) so others can help."
+    ]
+   },
+   {
+    "url": "https://bootlin.com/blog/device-tree-101-webinar-slides-and-videos/",
+    "owner": "Bootlin (Thomas Petazzoni), webinar 2021",
+    "licence": "CC BY-SA 3.0 (Bootlin training/talk materials)",
+    "covers": "Device Tree introduction: syntax, dtsi/dts inclusion, bindings, how drivers match, overlays; slides, LaTeX source and video.",
+    "strengths": "Best free DT tutorial for newcomers; can be linked rather than rewritten.",
+    "lessons": [
+     "Link newcomers to a DT primer instead of re-explaining syntax in the guide.",
+     "Understand dtsi inclusion and label overrides before writing a board file."
+    ]
+   },
+   {
+    "url": "https://bootlin.com/docs/",
+    "owner": "Bootlin",
+    "licence": "Training materials CC BY-SA 3.0",
+    "covers": "Index of free training (embedded Linux, kernel and driver development) and talks incl. 'Your new ARM SoC Linux support check-list' (2013), 'Supporting a new ARM platform: the Allwinner example' (2014), 'Porting Linux on an ARM board' (2015), 'Device Tree as a stable ABI: a fairy tale?' (2015), legacy 'Porting U-Boot'.",
+    "strengths": "Large, openly licensed, reusable corpus; licence permits adaptation with attribution.",
+    "lessons": [
+     "CC BY-SA material can be adapted with attribution, unlike most blogs; prefer it for diagrams.",
+     "The kernel/driver training slides cover clocks, pinctrl, regulators and power management at a depth a phone guide can link to."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/",
+    "owner": "Luca Weiss (Fairphone, postmarketOS), FOSDEM 2023",
+    "licence": "Not stated",
+    "covers": "Bringing an unsupported Qualcomm SoC (SM7225) up: first boot, clock and pinctrl drivers from downstream, regulators, USB, what breaks (IOMMU, resets), debugging, upstreaming habits.",
+    "strengths": "Real numbers and concrete failure modes from a recent phone SoC; very close to a Pro1-X-style workflow.",
+    "lessons": [
+     "First boot can be ~180 lines of SoC dtsi and ~40 lines of board dts with earlycon and simple-framebuffer, no driver changes.",
+     "Deal with the bootloader's dtbo handling first; erasing the dtbo partition often suffices on Qualcomm.",
+     "Port clock (with GDSC power domains) and pinctrl drivers from the downstream kernel, then regulators, then get USB up for a better debug channel.",
+     "Mainline does not keep bootloader IOMMU mappings; unexpected resets often mean a missing clock, a wrong register or an IOMMU fault.",
+     "Without UART, print function/line to the framebuffer and stall, or build suspicious drivers as modules.",
+     "Commit every small success, squash later; start sending patches early so work does not rot."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf",
+    "owner": "Luca Weiss (Fairphone, postmarketOS), FOSDEM 2025",
+    "licence": "Not stated",
+    "covers": "State of mainline phones 2025: functionality vs reliability, commonly missing pieces (cameras, fuel gauge, calls/data), what is hard to upstream, roles a device team needs.",
+    "strengths": "Honest framing of the last 20%; good for setting expectations and a 'definition of done'.",
+    "lessons": [
+     "Bring-up proves functionality; users judge reliability (suspend cycles, long uptime), so test over days, not boots.",
+     "Commonly missing: camera, battery fuel gauge, calls and mobile data; plan for these explicitly.",
+     "Some things resist upstreaming (undocumented camera sensors, vibrators, panel/touch hacks), so expect a small fork to remain.",
+     "Rebase and retest on every kernel release (~9 weeks); merging stable and testing -rc is a good starter task.",
+     "Split roles: kernel devs, testers who bisect regressions, someone who prioritises."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_845/",
+    "owner": "Caleb (Casey) Connolly (Linaro, postmarketOS), FOSDEM 2022",
+    "licence": "Not stated",
+    "covers": "Android vs mainline vs Halium; what a Qualcomm SoC contains; bootloader quirks (XBL/ABL, dtbo); bring-up by copying the reference board DT; missing features list.",
+    "strengths": "Clear inventory of the hardware blocks to enable and of bootloader traps.",
+    "lessons": [
+     "Start the board DTS from the SoC reference/dev board DTS (e.g. MTP/QRD), then validate regulators and add a simple-framebuffer.",
+     "Vendors modify ABL; some refuse to boot without a matching dtbo, so you may need a crafted dtbo or an erased dtbo partition.",
+     "Enumerate SoC blocks up front (clocks, TLMM, PMIC regulators, remoteprocs, QUP serial engines, IOMMU, interconnects, UFS/eMMC, GPU/DSI) to plan the order.",
+     "Halium trades device-enablement speed for blobs; mainline is the route to generic distros."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/",
+    "owner": "Nikita Travkin (msm8916-mainline), FOSDEM 2022",
+    "licence": "Not stated",
+    "covers": "Supporting 25+ MSM8916 phones on one kernel: Samsung flashing quirks, lk2nd shim bootloader, generating DSI panel drivers from downstream DT, multi-sourced panels, firmware partitions.",
+    "strengths": "Shows how one community scales mainline across many cheap devices.",
+    "lessons": [
+     "A shim bootloader (lk2nd) normalises quirky vendor bootloaders: one boot and flash flow for many models.",
+     "DSI panels need a driver per panel; generate it from the downstream DT instead of hand-converting init sequences.",
+     "Phones are often multi-sourced for panels/touch; detect in the bootloader and patch the DT rather than in the kernel.",
+     "Device variants can share one DT yet need different firmware; load firmware from the stock partitions at runtime."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2024/events/attachments/fosdem-2024-1716-u-boot-for-modern-qualcomm-phones/slides/22104/fosdem24_aDevbas.pdf",
+    "owner": "Caleb (Casey) Connolly (Linaro), FOSDEM 2024",
+    "licence": "Not stated",
+    "covers": "Why Android boot is painful, UEFI, chainloading U-Boot from ABL on Qualcomm phones, upstream status, supporting a new SoC in U-Boot.",
+    "strengths": "Path to a distro-friendly boot (UEFI/extlinux) on locked Qualcomm phones.",
+    "lessons": [
+     "You usually cannot replace the signed vendor bootloader, but you can chainload U-Boot as the 'kernel' it boots.",
+     "U-Boot for Qualcomm uses the upstream Linux DT, with deviations kept in a separate -u-boot.dtsi.",
+     "A new SoC in U-Boot needs only stub clock/pinctrl drivers plus UFS PHY data to boot from storage.",
+     "U-Boot gives UEFI, so distros can update kernels without rebuilding Android boot images."
+    ]
+   },
+   {
+    "url": "https://docs.u-boot.org/en/latest/board/qualcomm/phones.html",
+    "owner": "U-Boot project",
+    "licence": "GPL-2.0 (U-Boot docs, not stated on page)",
+    "covers": "Building U-Boot for Qualcomm phones (qcom_defconfig + phone config fragment), fastboot boot, debugging crashes.",
+    "strengths": "Practical recipe complementing the FOSDEM talk.",
+    "lessons": [
+     "Get the Linux kernel booting on the device first; U-Boot reuses that DT.",
+     "Enable framebuffer output so U-Boot errors are visible without UART.",
+     "Bisect U-Boot crashes by disabling drivers (clk, pinctrl, mmc, usb) and inserting resets to locate the fault."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2024/events/attachments/fosdem-2024-1707-mainline-linux-on-qualcomm-socs-are-we-here-now-/slides/22126/FOSDEM24_-_Mainline_Linux_on_Qualcomm_SoCs_are_cW72KOo.pdf",
+    "owner": "Neil Armstrong (Linaro), FOSDEM 2024",
+    "licence": "Not stated",
+    "covers": "History and status of Qualcomm upstream support, board counts over time, supported devices, what remains, call for help.",
+    "strengths": "Shows the state of the art: flagship SoCs upstreamed within months; useful git one-liners for measuring progress.",
+    "lessons": [
+     "Check how much of your SoC is already upstream before planning; many Qualcomm SoCs since 2018 have a dtsi.",
+     "Measure progress with git (count boards/commits per tag) instead of guessing.",
+     "Companion talk 'No, it's never too late to upstream your legacy Linux-based platform' (ELC-E 2016, EOSS 2024) argues old devices are still worth upstreaming."
+    ]
+   },
+   {
+    "url": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_mainline/",
+    "owner": "Luca Weiss, FOSDEM 2022",
+    "licence": "Not stated",
+    "covers": "Talk 'Porting mainline Linux to mobile phones': why vendor kernels are a security problem, how to port mainline to Qualcomm phones from DT to working hardware; slides and video.",
+    "strengths": "Introductory talk aimed at first-time porters.",
+    "lessons": [
+     "Frame the motivation as security and longevity, not just openness.",
+     "A mainline port removes the need for libhybris and Android userspace blobs."
+    ]
+   },
+   {
+    "url": "https://fosdem.org/2026/schedule/event/SXNNMZ-snapdragon_8_gen_3_mainline_from_day-1_patches_to_product_reality/",
+    "owner": "FOSDEM 2026 speaker (Linaro/Qualcomm landing team), schedule page",
+    "licence": "Not stated",
+    "covers": "Post-mortem of SM8650 upstreaming from day-one patches to a fully featured device, with live demo.",
+    "strengths": "Most recent data point (2026) on vendor-driven day-one mainline. Only the abstract (via search) was read; the schedule page redirect to archive.fosdem.org was not fetched.",
+    "lessons": [
+     "For current flagship Qualcomm SoCs, start by checking upstream: the base may already exist from launch day."
+    ]
+   },
+   {
+    "url": "https://mainlining.dev/",
+    "owner": "Iskren Chernev (blog)",
+    "licence": "Not stated",
+    "covers": "Step-by-step series mainlining OnePlus Nord N100 (SM4250): building and running the stock kernel, booting mainline, USB networking, pinctrl driver, RPM power domains, UFS PHY, SPMI/SMD regulators, PMIC ADC and thermals.",
+    "strengths": "The only detailed chronological diary outside pmOS that walks a new Qualcomm SoC from zero; recommended by Luca Weiss.",
+    "lessons": [
+     "Build and boot the stock kernel first to have a known-good baseline and to read hardware facts from it.",
+     "Minimal DT for first boot: cpus, memory, reserved-memory, timer, interrupt controller, simple-framebuffer, plus a ramoops node.",
+     "Triangulate every node from three sources: the downstream DT, the dt-bindings docs, and a similar SoC already upstream.",
+     "Use pstore/ramoops to read the previous boot's log after a crash-reboot; essential without UART.",
+     "Each compatible you add needs its Kconfig symbol enabled; missing config is a common silent failure.",
+     "After display, bring up USB networking (gadget) to get ssh before tackling storage and power."
+    ]
+   },
+   {
+    "url": "https://connolly.tech/posts/",
+    "owner": "Caleb (Casey) Connolly (blog)",
+    "licence": "Not stated",
+    "covers": "Posts incl. 'The state of Android bootloaders, a call to developers' (2021), 'Linux 5.14 - the state of mainline on SDM845 devices' (2021), '-DDEBUGging the kernel' (2023), 'How you can help the Linux Mobile ecosystem' (2022).",
+    "strengths": "Insider view of maintaining a close-to-mainline fork and of bootloader limitations.",
+    "lessons": [
+     "Keep the fork small and itemised (they carried ~43 patches on SDM845) and sort patches into 'upstreamable' and 'never'.",
+     "Android boot images, A/B slots and hardcoded offsets fight distro kernel updates; plan a second-stage bootloader.",
+     "Compile a driver with -DDEBUG (or #define DEBUG) to get dev_dbg output without dynamic debug setup.",
+     "Kernel features like fw_devlink can break phone drivers in new releases; keep a list of cmdline workarounds and why."
+    ]
+   },
+   {
+    "url": "https://masneyb.github.io/nexus-5-upstream/",
+    "owner": "Brian Masney (individual)",
+    "licence": "Not stated (kernel code GPL-2.0)",
+    "covers": "Upstreaming the Nexus 5 (MSM8974): hardware status table, headphone-jack UART cable, build script, per-component patch list with states, out-of-tree patch series with cover letters.",
+    "strengths": "Model for tracking per-component upstream status publicly.",
+    "lessons": [
+     "Keep a status table per component with states like pending, needs work, queued, mainline, linked to the patches.",
+     "Build a UART cable early (here via the headphone jack); it pays off over the whole project.",
+     "Upstream simple drivers (sensors, charger, backlight) first; GPU/IOMMU/modem take much longer.",
+     "Publish out-of-tree work as a series with a cover letter explaining what still blocks it."
+    ]
+   },
+   {
+    "url": "https://asahilinux.org/docs/",
+    "owner": "Asahi Linux contributors",
+    "licence": "Not stated (© Asahi Linux contributors)",
+    "covers": "Feature support per SoC, device list, subsystems, m1n1 user guide and hypervisor, tethered boot, U-Boot, DT bindings status, open-OS interop.",
+    "strengths": "State-of-the-art tooling for a platform with zero vendor Linux; shows how good instrumentation speeds bring-up.",
+    "lessons": [
+     "Invest in a fast iteration loop: tethered USB boot let them test kernels in seconds instead of reflashing.",
+     "A hypervisor that runs the vendor OS and logs MMIO accesses is a powerful reverse-engineering tool where documentation is missing.",
+     "Keep a public per-feature support matrix per SoC.",
+     "Track each binding's upstream state (unsubmitted, proposed, merged) and coordinate DT with other OSes (OpenBSD) since it is a shared ABI.",
+     "Use SoC-specific compatibles with a generic fallback across generations."
+    ]
+   },
+   {
+    "url": "https://www.collabora.com/news-and-blog/news-and-events/initial-upstream-support-for-the-rockchip-rk3576.html",
+    "owner": "Collabora (Sebastian Reichel), Dec 2024",
+    "licence": "Not stated",
+    "covers": "What landed for RK3576 in 6.12 (PMIC, CRU, power domains, storage, network, I2C/SPI, ADC, watchdog, pinmux, GPU) and why the board DTS slipped to 6.13 (UART binding, GPIO).",
+    "strengths": "Concrete example of real upstream ordering and of a single missing binding delaying a board.",
+    "lessons": [
+     "Order: PMIC, clock/reset, power domains, storage, network, low-speed buses, then GPU.",
+     "A board DTS cannot merge until every binding it references (even UART/GPIO) is accepted; track the long pole.",
+     "Work on a sibling SoC compounds: shared IP blocks make the next SoC much faster."
+    ]
+   },
+   {
+    "url": "https://lpc.events/event/19/contributions/2124/",
+    "owner": "William McVicker (Google), Peter Griffin (Linaro), LPC 2025 Android MC (also Linaro Connect 2024 'Pixel 6 and Tensor G1 upstreaming status')",
+    "licence": "Not stated",
+    "covers": "Upstreaming Pixel 6 / gs101 per kernel release, LKFT/LAVA CI on a phone, pain points (non-compliant PSCI, bootloader DT assumptions, multiple PMICs, no board overlays), getting started.",
+    "strengths": "Rare vendor-side view of mainlining a commercial phone, incl. CI.",
+    "lessons": [
+     "Initial upstream for gs101 was pinctrl, a few clock units, GPIO, UART, watchdog: enough for a busybox initramfs shell.",
+     "Expect firmware quirks such as non-compliant PSCI needing special cpuidle/hotplug handling.",
+     "The bootloader may assume particular DT node names and hierarchy; mainline DT must stay compatible with it.",
+     "Put the phone in CI (LAVA) to catch linux-next regressions automatically.",
+     "Driver review sometimes waits on binding review; send bindings early."
+    ]
+   },
+   {
+    "url": "https://github.com/msm8916-mainline/linux-mdss-dsi-panel-driver-generator",
+    "owner": "msm8916-mainline (Stephan Gerhold et al.)",
+    "licence": "GPL-2.0",
+    "covers": "Tool converting downstream Qualcomm MDSS DSI panel DT into mainline DRM panel drivers, example dtsi and LK headers.",
+    "strengths": "Removes the most tedious part of display bring-up on Qualcomm phones.",
+    "lessons": [
+     "Extract the DTB from the stock boot image and generate the panel driver rather than hand-porting init sequences.",
+     "Verify generated output; wrong init commands can leave the panel dark.",
+     "Keep simple-framebuffer as the fallback display until the DSI driver works."
+    ]
+   },
+   {
+    "url": "https://docs.ubports.com/en/latest/porting/introduction/index.html",
+    "owner": "UBports",
+    "licence": "Not stated",
+    "covers": "Ubuntu Touch porting guide: building and booting (Halium and standalone kernel), configuring and fixing, finalising (recovery, installer). Mainline only via device pages (PinePhone/PineTab).",
+    "strengths": "Contrast case: shows the Halium route and its boot-image details (offsets, header versions, dtbo) which a mainline guide also meets at the bootloader level.",
+    "lessons": [
+     "Extract offsets and header version from the stock boot image (unpack_bootimg) before building any image; wrong values simply do not boot.",
+     "Note GKI/dtbo specifics per device generation.",
+     "Halium-based ports keep the vendor kernel; state clearly in our guide where mainline differs."
+    ]
+   },
+   {
+    "url": "https://docs.droidian.org/porting-guide/",
+    "owner": "Droidian",
+    "licence": "Not stated",
+    "covers": "Porting Droidian on Halium: kernel compile with required config, adaptation package, rootfs/image for Android 9+ devices.",
+    "strengths": "Useful contrast: what is NOT needed on a mainline port (Halium config, adaptation layer) and what is.",
+    "lessons": [
+     "Explicitly contrast Halium (vendor kernel plus Android blobs in a container) with mainline in the intro chapter.",
+     "Package device configuration as a separate adaptation package, a pattern that also suits mainline ports in a distro."
+    ]
+   },
+   {
+    "url": "https://wiki.debian.org/Mobile",
+    "owner": "Debian",
+    "licence": "CC BY-SA 4.0 (content changed after 2025-07-24)",
+    "covers": "Debian on phones/tablets: contacts, upstream projects, hardware support tables, software stacks, Mobian.",
+    "strengths": "States the distro-side policy: Debian kernel team accepts only mainline drivers.",
+    "lessons": [
+     "A general distro will not carry out-of-tree drivers; upstream is the only route to distro support.",
+     "Document per-device bootloader and kernel status in a table for distro packagers."
+    ]
+   },
+   {
+    "url": "https://fedoraproject.org/wiki/Mobility/SDM845",
+    "owner": "Fedora Mobility SIG",
+    "licence": "CC BY-SA 4.0",
+    "covers": "Fedora on SDM845 phones (OnePlus 6/6T, Poco F1); points to Pocketblue (Fedora Atomic) work.",
+    "strengths": "Shows distros pick devices by mainline maturity.",
+    "lessons": [
+     "Distros adopt devices whose SoC has solid mainline support; mainlining is the entry ticket to general distros."
+    ]
+   },
+   {
+    "url": "https://developer.puri.sm/Librem5/index.html",
+    "owner": "Purism",
+    "licence": "CC BY-SA 4.0",
+    "covers": "Librem 5 developer docs: dev kit, USB-serial adapter, flashing U-Boot, minimal Linux on eMMC, kernel rebuild, troubleshooting.",
+    "strengths": "Example of a phone vendor documenting serial console and bootloader flashing for developers.",
+    "lessons": [
+     "Document the serial adapter wiring and voltage up front.",
+     "Provide a recovery path for a broken bootloader before people experiment."
+    ]
+   },
+   {
+    "url": "https://wiki.pine64.org/wiki/PinePhone_Software_Releases",
+    "owner": "PINE64 community wiki",
+    "licence": "Not stated",
+    "covers": "PinePhone OS list; points to megi's kernel (xff.cz), his feature/driver matrix (xnux.eu) and the sunxi wiki.",
+    "strengths": "Shows the value of a single maintained near-mainline kernel plus a public driver support matrix.",
+    "lessons": [
+     "A per-driver support matrix kept by the kernel maintainer is the most useful status document for a device.",
+     "Beware the 'temporary' fork becoming permanent (PinePhone's megi kernel is still carried)."
+    ]
+   },
+   {
+    "url": "https://momi.ca/posts/2022-09-07-mainline/",
+    "owner": "Anjan Momi (blog)",
+    "licence": "Content CC BY-SA 4.0",
+    "covers": "Opinion piece: why mainline matters for the PinePhone Pro and phones generally.",
+    "strengths": "Concise argument for a 'why mainline' preface.",
+    "lessons": [
+     "Forked kernels stop getting security fixes quickly; mainline is the only path to long device life.",
+     "Interim forks tend to become permanent unless upstreaming is planned from the start."
+    ]
+   },
+   {
+    "url": "https://github.com/linux-msm/rmtfs",
+    "owner": "linux-msm (Linaro/Qualcomm landing team, Bjorn Andersson et al.)",
+    "licence": "BSD-3-Clause",
+    "covers": "Remote filesystem QMI service the modem uses for its EFS/NV storage. No README; facts read from rmtfs.c, storage.c, rproc.c, sharedmem.c, rmtfs.service.in and rmtfs.rules via the GitHub API.",
+    "facts": [
+     "Options: -o sets the storage root (or where by-name partitions are found together with -P); -P serves raw EFS partitions from /dev/disk/by-partlabel; -r is read-only (modem writes are dropped, so NV changes do not persist); -s makes rmtfs drive the modem remoteproc; -S a|b adds an A/B slot suffix; -v is verbose. The shipped unit runs 'rmtfs -r -P -s'.",
+     "With -s, rmtfs first publishes its QRTR/QMI service, then writes 'start' to the mss remoteproc's sysfs state file, and writes 'stop' on SIGINT. It finds the remoteproc by a modalias containing '-mpss-pas' or '-mss-pil', falling back to /sys/bus/platform/drivers/qcom-q6v5-mss/. A port using -s must therefore not let the kernel auto-boot the modem.",
+     "Partitions served: modemst1, modemst2, fsc, fsg, plus study/tunning, plus the OnePlus/Oppo NV backups oem_stanvbk and oem_dycnvbk. Any other path the modem requests is rejected. Without -P, files live under /boot/modem_fs1 and so on.",
+     "Shared memory comes from /dev/qcom_rmtfs_memN (kernel driver qcom_rmtfs_mem, which exposes phys_addr and size under /sys/class/rmtfs/), with a fallback to /dev/qcom_rmtfs_uioN.",
+     "Ordering hazard: the unit's ConditionPathExists=/dev/qcom_rmtfs_mem1 races module loading, so upstream added a udev rule that starts rmtfs.service via SYSTEMD_WANTS when qcom_rmtfs_mem* appears. The unit is also ordered Before=NetworkManager.service.",
+     "run_rmtfs loops on -ENETRESET, so the daemon keeps running across a QRTR network reset (a modem restart)."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/tqftpserv",
+    "owner": "linux-msm",
+    "licence": "BSD-3-Clause",
+    "covers": "TFTP server over AF_QIPCRTR. The modem uses it to read firmware and config files from the AP and to write temporary files there.",
+    "facts": [
+     "Two virtual roots: /readonly/firmware/image/ maps to /lib/firmware, and /readwrite/ maps to /tmp/tqftpserv (readable and writable).",
+     "A read-only request such as modem_pr/so/901_0_0.mbn is resolved against the directory of the modem node's DT firmware-name (example: qcom/qcm6490/fairphone5/modem.mbn). Custom firmware search paths and .zstd-compressed files are honoured.",
+     "Its clients are the modem/MPSS remoteproc. If it is missing, the modem boots but MBN/carrier-config loading fails.",
+     "Hazard: /tmp/tqftpserv is volatile, so anything the modem writes there is lost at reboot by design."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/qrtr",
+    "owner": "linux-msm (originally Sony Mobile)",
+    "licence": "BSD-3-Clause",
+    "covers": "Userspace reference library and tools for the kernel's AF_QIPCRTR (net/qrtr). No README; checked through the repo tree.",
+    "facts": [
+     "The repo now ships only lib/ plus src/addr.c, cfg.c and lookup.c, i.e. qrtr-cfg and qrtr-lookup. The userspace name-service daemon is gone because the name service runs in the kernel (net/qrtr/ns.c in mainline).",
+     "qrtr-lookup lists the QMI services published on the QRTR bus. ModemManager's docs recommend it for checking that a SoC modem is visible.",
+     "Port implication: no qrtr-ns unit is needed on a current kernel. Only qrtr-cfg remains, for the rare cases where the node address must be set by hand."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/pd-mapper",
+    "owner": "linux-msm",
+    "licence": "not asserted by GitHub (NOASSERTION); check LICENSE in repo (BSD-3-Clause headers)",
+    "covers": "Legacy userspace protection-domain mapper. Facts read from pd-mapper.c and the unit file.",
+    "facts": [
+     "It walks /sys/class/remoteproc/*/firmware, opens the directory each firmware lives in (under the firmware_class path parameter or /lib/firmware), and loads every *.jsn or *.jsn.xz file it finds there to build the servreg domain/service table.",
+     "Mainline now has an in-kernel replacement, drivers/soc/qcom/qcom_pd_mapper.c, which remoteproc drivers load automatically through a symbol dependency. The userspace daemon does not re-read .jsn files when firmware is mounted after it starts, and it does not work with CONFIG_EXTRA_FIRMWARE.",
+     "Without a PD mapper, services that live in protection domains (ADSP audio PD, sensors PD, WLAN firmware, battery manager/UCSI) never come up. On current kernels, do not run both the daemon and the in-kernel mapper."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/hexagonrpc",
+    "owner": "linux-msm",
+    "licence": "GPL-3.0",
+    "covers": "hexagonrpcd: FastRPC wrapper and reverse tunnel that serves files to the DSPs. It is a prerequisite for SSC sensors and for ADSP config on many SoCs.",
+    "facts": [
+     "FastRPC talks to CHRE (the Context Hub Runtime Environment) on the DSP, which manages the sensors. The reverse tunnel answers adsp_listener_next2 calls and serves files through the apps_std interface (HexagonFS).",
+     "The file tree is looked up under -R, default /usr/share/qcom: acdb, dsp, sensors/config, sensors/registry, sensors/sns_reg.conf, socinfo.",
+     "Where the files come from on Android: acdb from /vendor/etc/acdbdata, dsp from /vendor/dsp, sensors/config from /vendor/etc/sensors/config, sensors/registry from /mnt/vendor/persist/sensors/registry/registry, sns_reg.conf from /vendor/etc/sensors/sns_reg_config, and socinfo is /sys/devices/soc0. The registry comes from the persist partition, so copy it read-only and never write persist back.",
+     "Path convention: -R /usr/share/qcom/<soc>/<Vendor>/<device>, for example /usr/share/qcom/sdm845/SHIFT/axolotl.",
+     "A reverse tunnel only serves the process that opened the fastrpc fd. A shared broker daemon is listed as future work.",
+     "Built with Meson. The repo contains libhexagonrpc, hexagonrpcd, chrecd, tests and tools."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/hexagon-dsp-binaries",
+    "owner": "linux-msm",
+    "licence": "MIT (repo); the binaries carry their own licences, recorded in WHENCE",
+    "covers": "The DSP-side binaries (fastrpc_shell_N and others) that FastRPC, compressed audio and sensors need, in addition to linux-firmware.",
+    "facts": [
+     "Needed: fastrpc_shell_0..3, plus fastrpc_shell_unsigned_3 (CDSP only), plus the hook libraries.",
+     "The binaries are tied to the SoC and the DSP firmware revision. config.txt picks the set per board, and scripts/checkfw.py checks it against the installed linux-firmware tree.",
+     "Hazard: a fastrpc shell that does not match the DSP firmware fails at runtime. Pin them together."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/linux-msm/audioreach-topology",
+    "owner": "linux-msm",
+    "licence": "BSD-3-Clause",
+    "covers": "AudioReach topology sources for q6apm-based ADSP firmware. Repo listing only; no README content could be retrieved.",
+    "facts": [
+     "AudioReach (q6apm/q6prm over GPR) needs a per-board topology file that userspace or the firmware path provides. APR-based q6asm/q6adm/q6afe firmware does not."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://linux-msm.github.io/mainline-status/",
+    "owner": "linux-msm (Linaro)",
+    "licence": "MIT (mainline-status repo)",
+    "covers": "Per-SoC table of when each feature landed in mainline: about 34 categories, including remoteproc, IPA, audio, CAMSS, video, GPU and GNSS.",
+    "facts": [
+     "Kernel version each feature first landed in, as the page gives it. Modem/IPA: SDM845 5.2, SM8250 5.8/5.11, SM6350 5.16, SM7225 5.16, SC7280 5.6, QCM6490 5.13, SM8550 6.3.",
+     "Audio: SDM845 5.3, SM8250 5.19, SM7225 5.16, SM8550 6.3. Camera: SDM845 5.1, SM8250 5.12, SM7225 6.6, SM8550 6.4. Video: SDM845 5.5, SM8250 5.9, SM8550 6.8.",
+     "'Audio' here means playback/capture DAIs. Voice-call audio is not a tracked category."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://docs.kernel.org/networking/device_drivers/cellular/qualcomm/rmnet.html",
+    "owner": "Linux kernel community",
+    "licence": "GPL-2.0 (kernel tree)",
+    "covers": "rmnet: QMAP/MAP demultiplexing and checksum-offload headers.",
+    "facts": [
+     "MAPv1 header: command/data bit, pad length, mux ID, payload length. MAPv4 appends a checksum trailer after the payload. MAPv5 adds a next-header bit and a separate checksum header (type 2) carrying a csum-valid bit.",
+     "Downlink aggregation: several MAP packets arrive in one linear skb, padded to 4-byte alignment, and rmnet de-aggregates them.",
+     "Configuration goes through rtnetlink/iproute2 (type rmnet, mux_id N on top of the real device, rmnet_ipa0 on IPA SoCs).",
+     "The uapi flags in include/uapi/linux/if_link.h are RMNET_FLAGS_INGRESS_DEAGGREGATION, INGRESS_MAP_COMMANDS, INGRESS/EGRESS_MAP_CKSUMV4 and INGRESS/EGRESS_MAP_CKSUMV5. Use the v4 or the v5 pair to match the hardware and the WDA format; mixing them breaks checksums."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/torvalds/linux/blob/master/Documentation/ABI/testing/sysfs-devices-platform-soc-ipa",
+    "owner": "Linux kernel community (Linaro IPA maintainers)",
+    "licence": "GPL-2.0",
+    "covers": "Sysfs ABI of the IPA driver, read together with drivers/net/ipa/ipa_qmi.c, ipa_modem.c and DT binding net/qcom,ipa.yaml (mainline 7.3 tree).",
+    "facts": [
+     ".../XXXXXXX.ipa/version gives the IPA hardware version. feature/rx_offload and feature/tx_offload read 'MAPv4' or 'MAPv5' and tell you which checksum-offload variant to configure.",
+     "endpoint_id/modem_rx and endpoint_id/modem_tx (also under modem/rx_endpoint_id and tx_endpoint_id) are the AP endpoint IDs for the modem data path. These are the hw-data-rx-id and hw-data-tx-id values a DPM open-port request needs.",
+     "The IPA netdev is rmnet_ipa%d. It has no broadcast or multicast, MTU defaults to max (IPA_MTU), and its only hw_feature is NETIF_F_SG; checksum offload happens in the rmnet/MAP layer on top.",
+     "AP/modem QMI handshake (ipa_qmi.c): the AP sends INIT_DRIVER once the modem's IPA QMI service appears. The modem loads the IPA microcontroller firmware and sends DRIVER_INIT_COMPLETE. On the first boot the modem also sends INDICATION_REGISTER and the AP answers with an INIT_COMPLETE indication. After a modem restart, only the first two steps are required.",
+     "DT qcom,gsi-loader is self, modem or skip: self means the AP loads GSI firmware through TrustZone and then needs memory-region; modem means the modem loads it. The old boolean modem-init is deprecated. Getting this wrong per device means no data path.",
+     "qcom,smem-states needs the SMP2P bits ipa-clock-enabled-valid and ipa-clock-enabled, which tell the modem whether the IPA clock is on."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/torvalds/linux/blob/master/Documentation/ABI/testing/sysfs-class-remoteproc",
+    "owner": "Linux kernel community",
+    "licence": "GPL-2.0",
+    "covers": "Sysfs control of remote processors (state, firmware, name, coredump, recovery), plus Documentation/staging/remoteproc.rst.",
+    "facts": [
+     "Writing start or stop to /sys/class/remoteproc/remoteprocN/state boots or halts a DSP. The firmware attribute can only be changed while the remoteproc is offline.",
+     "Use the name attribute to pick the right remoteprocN, because numbering is not stable across boots or kernels.",
+     "recovery is enabled or disabled. While disabled, a crashed remoteproc stays crashed for debugging, and it recovers as soon as recovery is re-enabled.",
+     "coredump is default, inline or disabled. With inline, recovery waits until userspace has read the whole dump, so a stuck reader blocks modem restart.",
+     "The firmware is ELF (mdt/mbn). The resource table declares carveouts, devmem, trace and vdevs before boot. pil-squasher (linux-msm) converts split mdt+bNN files into a single .mbn."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://docs.kernel.org/admin-guide/media/qcom_camss.html",
+    "owner": "Linux kernel community (Linaro, Todor Tomov)",
+    "licence": "GPL-2.0",
+    "covers": "CAMSS driver admin guide: CSIPHY, CSID, ISPIF and VFE subdevices, RDI and PIX paths.",
+    "facts": [
+     "The pipeline is CSIPHY to CSID to ISPIF to VFE, each a V4L2 subdevice wired with media-ctl. The graph is linear on purpose so userspace does not have to handle branches.",
+     "The VFE's RDI outputs give raw Bayer (RAW8/10/12/14) without any processing. The PIX path only converts packed YUV input to NV12/NV21/NV16/NV61 with scaling and crop. Neither does debayering, AWB or AE, so a Bayer sensor needs a software or GPU ISP.",
+     "Hazard: the admin guide still only describes MSM8916/APQ8016 and MSM8996, while DT bindings now exist for sdm660, sdm670, sdm845, sm6150, sm6350, sm8250, sc7280, sm8550, sm8650, x1e80100 and more. On newer SoCs, use the bindings and source, not the guide."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://docs.libcamera.org/master/runtime_configuration.html",
+    "owner": "libcamera project",
+    "licence": "(c) 2018-2025 The libcamera documentation authors (licence not stated on page)",
+    "covers": "libcamera runtime configuration: simple pipeline handler supported_devices and the software ISP.",
+    "facts": [
+     "LIBCAMERA_SOFTISP_MODE, or software_isp.mode in configuration.yaml, chooses cpu or gpu processing. gpu falls back to cpu when EGL is unavailable.",
+     "software_isp.threads sets the render threads (1-8, default 2). software_isp.copy_input_buffer copies input into cached memory, which matters for uncached dma-buf from CAMSS.",
+     "pipelines.simple.supported_devices maps a kernel driver name to software_isp: true or false, so the soft ISP can be switched on for any platform the simple handler matches.",
+     "Config search order: $XDG_CONFIG_HOME/libcamera/configuration.yaml, then LIBCAMERA_SYSCONF_DIR, then LIBCAMERA_DATA_DIR. LIBCAMERA_PIPELINES_MATCH_LIST limits which handlers are tried.",
+     "The 15x debayer+CCM speed-up for the GPU ISP over the CPU ISP (Linaro, RB5 with IMX512, libcamera 0.7) is only a press-report figure (Phoronix snippet), not verified at a primary source."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://libcamera.org/entries/2025-08-25.html",
+    "owner": "libcamera project",
+    "licence": "not stated",
+    "covers": "Status of the software ISP and GPU ISP as of ELCE 2025.",
+    "facts": [
+     "The software ISP grew over about 18-24 months from Linaro, Red Hat and Ideas on Board work. It is the fallback path for raw Bayer on SoCs without a usable hardware ISP, and started as CPU-only.",
+     "The GPU ISP targets OpenGL ES 2.0 and reuses libcamera's debayer shaders. It cuts power and CPU load compared with the CPU ISP, but still draws more than a hardware ISP would.",
+     "The simple pipeline handler is getting multi-stream support, so raw capture works alongside the soft-ISP output."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://memcpy.io/upstream-camera-support-for-qualcomm-platforms.html",
+    "owner": "Robert Foss (Linaro), 2021-02-23; copy of a Linaro blog post",
+    "licence": "CC BY-SA 3.0",
+    "covers": "Upstream CAMSS status and its limits per SoC generation.",
+    "facts": [
+     "CAMSS gen1 (msm8916, msm8996, sdm660 from 5.11) has only basic crop and rotation in ISPIF. There is no ISP debayer, so Bayer output needs post-processing.",
+     "On Titan (sdm845 and later), the ISP's embedded-CPU command stream is undocumented. Advanced ISP functions therefore stay unused, and processing falls to the CPU or GPU.",
+     "Linaro's first step was GPU format conversion through OpenGL shaders in qcam. This later grew into the libcamera GPU ISP."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://www.freedesktop.org/software/libqmi/man/latest/qmicli.1.html",
+    "owner": "libqmi (Aleksander Morgado)",
+    "licence": "GPLv2+",
+    "covers": "qmicli syntax for QRTR devices, DPM, WDA data format, mux binding and link management.",
+    "facts": [
+     "-d qrtr://N opens a QMI node on the QRTR bus (N is the node, usually 0 for the modem), with no character device involved.",
+     "--dpm-open-port takes ctrl-ep-type, ctrl-ep-iface-number, ctrl-port-name, hw-data-ep-type, hw-data-ep-iface-number, hw-data-rx-id, hw-data-tx-id, sw-data-ep-type, sw-data-ep-iface-number and sw-data-port-name. The rx and tx IDs come from IPA sysfs endpoint_id.",
+     "--wda-set-data-format: link-layer-protocol raw-ip, ul-protocol and dl-protocol qmap or qmapv5 (also disabled, tlp, qc-ncm, mbim, rndis), dl/ul-datagram-max-size, dl/ul-max-datagrams, ep-type embedded, ep-iface-number. Embedded is the type for IPA SoCs.",
+     "--wds-bind-mux-data-port takes mux-id, ep-type (including embedded and bam-dmux) and ep-iface-number, binding a WDS client to one rmnet mux.",
+     "--link-add=iface=rmnet_ipa0,prefix=...,mux-id=N,flags=... creates rmnet links; flags takes the rmnet checksum flags. --link-delete removes them."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://chromium.googlesource.com/chromiumos/third_party/libqmi/+/master/NEWS",
+    "owner": "libqmi; ChromiumOS mirror (stops at 1.32)",
+    "licence": "GPLv2+ (qmicli), LGPLv2+ (libqmi-glib)",
+    "covers": "History of QRTR, DPM, QMAP and rmnet support in libqmi. The canonical repo is on gitlab.freedesktop.org, which blocks Claude, so this permitted mirror was used. Its raw ?format=TEXT variant is robots-restricted at the site root.",
+    "facts": [
+     "1.26 added the QRTR backend (--enable-qrtr, QMI_QRTR_SUPPORTED) for systems with the IPC router.",
+     "1.28 split out libqrtr-glib, added the 'embedded' and 'pcie' endpoint types and QMAPv5, added qrtr:// URIs in qmicli, and added --link-add, --link-delete and --link-list. Off qmi_wwan, rmnet netlink is assumed for links.",
+     "1.30 added the DPM service, described as required for IPA-based Qualcomm SoCs, plus qmi_device_add_link_with_flags() for rmnet checksum flags, QMAPv2/v3/v4 aggregation types and the bam-dmux endpoint type.",
+     "1.32 added the QMI_DEVICE_ADD_LINK_FLAGS ...MAP_CKSUMV5 flags (QMAPv5 checksum offload on TX and RX).",
+     "So libqmi 1.30 or newer is the floor for the IPA data path, and 1.32 or newer for QMAPv5 offload."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://modemmanager.org/docs/modemmanager/wwan-device-types/",
+    "owner": "ModemManager project",
+    "licence": "(c) 2024 The ModemManager Authors, all rights reserved",
+    "covers": "Which control and data ports SoC modems expose to ModemManager.",
+    "facts": [
+     "ModemManager can control a modem through QRTR nodes or through rpmsg-based WWAN character devices.",
+     "Two kinds of data port: older SoCs use bam-dmux with fixed netdevs, while IPA SoCs need virtual rmnet interfaces created per connection on top of rmnet_ipa0.",
+     "Use qrtr-lookup to check that the QMI services are present before suspecting ModemManager."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://modemmanager.org/docs/modemmanager/port-and-device-detection/",
+    "owner": "ModemManager project",
+    "licence": "(c) The ModemManager Authors",
+    "covers": "Port detection and udev tagging.",
+    "facts": [
+     "'qrtr' is a pseudo-subsystem inside ModemManager. QRTR nodes have no sysfs presence, so udev tags (ID_MM_*) cannot be attached to them.",
+     "The default strict filter allows qrtr devices. ModemManager never configures the network ports itself beyond bearer setup, and net ports are associated with a modem only after a control port is validated."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/EpicLPer/ipa-netmgr",
+    "owner": "EpicLPer (community)",
+    "licence": "LGPL-2.1-or-later",
+    "covers": "Standalone modem and data-path manager for IPA v2.x (MSM8994, Lumia 950/950 XL, MPSS.BO.2.5). A worked example of the IPA bring-up sequence without ModemManager.",
+    "facts": [
+     "Sequence: start the modem remoteproc and watch for restarts, open a DPM client over QRTR, then set WDA to raw-ip with QMAP framing on the embedded endpoint, start the WDS call, and create rmnet_dataN mux links over rtnetlink.",
+     "It also does UIM app selection, SUBSCRIPTION_OK, the NAS dual-standby mask and RAT preference before data. Older firmware does not attach without these.",
+     "It shares the QMI channel through qmi-proxy and supports a mode where another RIL owns the call. Relevant if oFono (SailfishOS) and a data helper must share the modem."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/sc7280-mainline/linux/pull/35",
+    "owner": "sc7280-mainline community kernel (author wrenix)",
+    "licence": "GPL-2.0 (kernel)",
+    "covers": "The out-of-tree q6voice driver for Fairphone 5 and QCM6490 on a v7.2 kernel. Merged 2026-09-18; earlier versions were PR #27 (v7.0) and #32 (v7.1).",
+    "facts": [
+     "Adds the APR voice services q6mvm (multimode voice manager), q6cvp (core voice processor) and q6cvs (core voice stream, a stub kept for later call recording), wrapped by one q6voice driver that starts and ends calls.",
+     "ASoC side: one CS-Voice DAI with a hostless front end (VoiceMMode1 for newer firmware), ALSA controls to pick voice RX/TX ports, and routes from TX_CODEC_DMA_TX and Senary MI2S into the voice DAIs. Topology IDs are set per codec through ALSA controls, with CVD 2.3 init and a TDM data delay taken from DT.",
+     "DT nodes added for qcm6490-fairphone-fp5, Motorola dubai and the kodiak reference.",
+     "Known bug at merge time: the microphone only works from the second call onward.",
+     "None of this is in mainline. The mainline 7.3 sound/soc/qcom/qdsp6/ has q6afe, q6asm, q6adm, q6routing, q6core, q6apm, q6prm, q6usb and audioreach, but no q6voice, q6cvp or q6mvm."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/gian-reto/nixos-fairphone-fp5/pull/9",
+    "owner": "gian-reto/nixos-fairphone-fp5 (PR by adjivas), 2026-09/10",
+    "licence": "not stated",
+    "covers": "A distro-side integration of Fairphone 5 call audio.",
+    "facts": [
+     "Call audio needs three pieces together: the q6voice kernel patch, 'dummystreamhack' to open the Qualcomm hostless RX/TX PCM streams, and an ALSA UCM 'Voice Call' profile.",
+     "Tested: the earpiece works and the Voice Call UCM profile activates. No mixer names are documented in the PR."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/alexander-pav/q6voiced",
+    "owner": "alexander-pav; fork of the postmarketOS q6voiced",
+    "licence": "not stated in README",
+    "covers": "Userspace daemon that opens the hostless q6voice PCM when a call starts.",
+    "facts": [
+     "It watches oFono call state on D-Bus and opens the voice PCM when a call starts, closing it when the call ends. SailfishOS already uses oFono, so this fits its telephony stack directly.",
+     "Depends on libdbus and tinyalsa. The README expects the daemon to become unnecessary once the kernel or UCM can start the voice path itself."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://gitlab.com/sdm845-mainline/linux/-/merge_requests/26",
+    "owner": "sdm845-mainline (Dylan Van Assche), 2022-05-26",
+    "licence": "GPL-2.0 (kernel)",
+    "covers": "q6voice APR nodes for SHIFT6mq (axolotl). The project also keeps a wip/q6voice branch.",
+    "facts": [
+     "Call audio on SDM845 has carried q6voice as a fork patch since 5.17/5.18. The project page says it aims to run mainline on SDM845 phones and targets OnePlus 6/6T, Pocophone F1 and SHIFT6mq.",
+     "Each device DTS needs its own q6voice APR service nodes; the SoC dtsi alone is not enough.",
+     "GitLab blob, raw and API paths are robots-disallowed, so only MR metadata was readable."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/qualcomm-linux/pkg-qcom-sensors",
+    "owner": "Qualcomm (qualcomm-linux org)",
+    "licence": "BSD-3-Clause (packaging); binaries are prebuilt and proprietary",
+    "covers": "Qualcomm's own Debian packaging of its sensors userspace for Qualcomm Linux (Ubuntu-based).",
+    "facts": [
+     "Ships prebuilt qcom-sensors-api, qcom-sensors-core, qcom-sensors-registry (registry service), qcom-sensors-services (daemon) and test apps, version 1.0.x for arm64.",
+     "This is a vendor-blob alternative to the free libssc plus hexagonrpcd stack, intended for Qualcomm's IoT boards. It is not a mainline-community path."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://www.linaro.org/blog/let-s-boot-the-mainline-linux-kernel-on-qualcomm-devices/",
+    "owner": "Linaro, Vinod Koul (Qualcomm Landing Team), 2021-10-28",
+    "licence": "not stated",
+    "covers": "Getting started with mainline on Qualcomm boards (RB3/RB5).",
+    "facts": [
+     "Build with arm64 defconfig, using targets Image.gz, dtbs and modules. Append the DTB to Image.gz and pack it with mkbootimg from skales (RB3 base 0x80000000).",
+     "Erase or blank the dtbo partitions first: ABL applies vendor overlays that break mainline DTs. Use 'fastboot boot' for tests instead of flashing.",
+     "The rootfs must provide the QRTR name service, pd-mapper, rmtfs and tqftpserv. On current kernels the first two are in-kernel (see the qrtr and pd-mapper entries)."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://github.com/msm8916-mainline/lk2nd",
+    "owner": "msm8916-mainline",
+    "licence": "not asserted by GitHub (NOASSERTION); check LICENSE in repo",
+    "covers": "Secondary bootloader that gives one fastboot and boot interface across MSM8916/8226/8974 and similar devices.",
+    "facts": [
+     "lk2nd is packed as an Android boot image and chain-loaded by the stock bootloader. The real kernel image goes in the same boot partition at a 512 KiB offset, or in an ext2 filesystem.",
+     "'fastboot flash boot' from within lk2nd writes at the 512 KiB offset so lk2nd itself is kept. Volume Down at boot enters fastboot. 'fastboot oem log' followed by 'get_staged' fetches the lk2nd log.",
+     "It detects panels and batteries and patches the DT, starts secondary cores where the firmware lacks PSCI, and has a workaround for the modem on Motorola phones.",
+     "lk1st is the primary-bootloader variant for SBCs."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/attachments/slides/5212/export/events/attachments/mobile_kernel_snapdragon_410/slides/5212/FOSDEM22_msm8916.pdf",
+    "owner": "Nikita Travkin, FOSDEM 2022",
+    "licence": "not stated",
+    "covers": "Supporting 25+ MSM8916 devices on one mainline kernel.",
+    "facts": [
+     "Panel init sequences can run to 200+ commands. linux-mdss-dsi-panel-driver-generator converts downstream DTBs into C panel drivers.",
+     "Hardware variants (for example SM-A500F, FU, H, YZ) boot the same DT but need different firmware. msm-firmware-loader mounts the device's own firmware partitions and links them in, instead of shipping blobs per variant.",
+     "Samsung devices have no fastboot (heimdall only), which is one reason lk2nd exists."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_845/attachments/slides/5276/export/events/attachments/mobile_kernel_snapdragon_845/slides/5276/from_android_to_mainline_on_sdm845.pdf",
+    "owner": "Caleb Connolly (Linaro intern, sdm845-mainline maintainer), FOSDEM 2022",
+    "licence": "not stated",
+    "covers": "Taking SDM845 phones from Android to mainline.",
+    "facts": [
+     "Bring-up started from the MTP dev-board DT: validate the regulators, then add simple-framebuffer.",
+     "Pixels refuse to boot unless they find a matching dtbo, so the project crafts a dtbo with magic values. Most vendors need the dtbo partition wiped.",
+     "Gaps as of 2022: camera (WIP), call audio (WIP), sensors (proprietary protobuf protocol), USB-PD/OTG, and GPS (gpsd patches could not land for lack of documentation).",
+     "On SDM845, WLAN also uses QMI over QRTR over shared memory, so QRTR has to be working before WiFi as well as the modem."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/attachments/slides/5454/export/events/attachments/mainline_on_the_fairphone4/slides/5454/Mainline_Linux_on_recent_Qualcomm_SoCs_Fairphone_4.pdf",
+    "owner": "Luca Weiss (Fairphone, postmarketOS), FOSDEM 2023",
+    "licence": "not stated",
+    "covers": "Bringing up a new mid-range Qualcomm SoC (SM7225, Fairphone 4).",
+    "facts": [
+     "First boot took about 180 lines of SoC dtsi and about 40 of device dts with no driver changes: earlycon plus simple-framebuffer, after 'fastboot erase dtbo'.",
+     "Next steps in order: GCC clocks and GDSCs ported from downstream, then RPMh clocks, smem, tcsr_mutex, apss_shared and aoss_qmp, then USB, pinctrl and regulators.",
+     "Hazard: mainline does not keep the IOMMU mappings the bootloader set up, unlike downstream. A wrong IOMMU setup, an unclocked block or a wrong register write all show up as silent reboots.",
+     "Debugging trick: print __func__ and __LINE__ to the framebuffer console and sleep, or build the driver as a module.",
+     "In February 2023 the remoteprocs ran but the modem/data, microphones, CAMSS and Venus did not."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://wiki.debian.org/Mobian/Devices",
+    "owner": "Debian wiki / Mobian",
+    "licence": "CC BY-SA 4.0 for changes after 2025-07-24",
+    "covers": "Mobian device support tiers.",
+    "facts": [
+     "Tier 1: OnePlus 6/6T, Pocophone F1, Pixel 3a. Tier 2: SHIFT6mq. Experimental, demo only: Fairphone 4 and 5.",
+     "No per-device technical pages exist on the Debian wiki (the /Mobian/Devices/OnePlus6 and 6T URLs return 404). Mobian's Qualcomm packaging (droid-juicer, qcom-phone-utils) lives on salsa, where blob, raw and API paths are robots-disallowed."
+    ],
+    "topic": "qualcomm"
+   },
+   {
+    "url": "https://docs.ubports.com/en/latest/porting/introduction/Intro.html",
+    "owner": "UBports",
+    "licence": "not stated on page",
+    "covers": "Ubuntu Touch porting guide.",
+    "facts": [
+     "Since 20.04, Ubuntu Touch ports are normally Halium 9 or later. There is no documented mainline-kernel Qualcomm path, only generic 'building the kernel' pages.",
+     "The OnePlus 6 community port is Halium-based (gitlab.com/ubports/porting/community-ports/android9/oneplus-6)."
+    ],
+    "topic": "qualcomm"
+   }
+  ],
+  "common_structure": [
+   "Why mainline (and what it is not): vendor kernel vs Halium/libhybris vs mainline; security and longevity motivation.",
+   "Prerequisites and expectations: hardware, toolchain, cross-compile, git and mail setup, realistic 'missing 20%' scope.",
+   "Know your device: SoC identification, what is already upstream for the SoC, downstream kernel source and DT, stock firmware dumps.",
+   "Debug channel: UART/serial (test points, headphone jack, adapters), earlycon, and fallbacks (simple-framebuffer, pstore/ramoops, USB gadget).",
+   "Boot chain: vendor bootloader quirks (boot image header, dtbo, appended DTB, AVB), fastboot boot, shim/second-stage bootloaders (lk2nd, U-Boot), arm64 boot contract.",
+   "Stock baseline: build and boot the vendor kernel to have a known-good reference.",
+   "Minimal device tree: cpus, memory, reserved-memory, timer, interrupt controller, UART, simple-framebuffer; boot to an initramfs shell.",
+   "SoC enablement (if new SoC): clocks/GDSCs, pinctrl, power domains, interconnect, IOMMU, ported from downstream.",
+   "Enabling peripherals one at a time: regulators/PMIC, USB (gadget networking), storage, buttons, display panel, touch, GPU, Wi-Fi/BT, audio, sensors, charging/fuel gauge, modem/remoteprocs, camera.",
+   "Firmware handling: where blobs come from, loading from stock partitions, licensing.",
+   "Debugging techniques: printk bisection, -DDEBUG/dynamic debug, reset causes, IOMMU faults, fw_devlink.",
+   "DT and binding rules: coding style, writing bindings, dt_binding_check/dtbs_check.",
+   "Upstreaming: series structure, get_maintainer, b4/send-email, review cycles, merge window timing, tags incl. AI disclosure.",
+   "Maintenance: carrying a small fork, rebasing per release, stable merges, reliability testing, CI, status matrix."
+  ],
+  "gaps_we_could_fill": [
+   "A vendor-neutral, end-to-end mainline phone guide outside postmarketOS: most material is talks or SoC-specific blog series.",
+   "Integrating a mainline kernel into a non-Alpine/non-Debian phone OS (e.g. SailfishOS: droid-hal/hybris userspace replaced by mainline drivers, kernel packaging, boot image generation in OBS/sfdk).",
+   "An explicit, reproducible crash-to-fastboot iteration loop (automated flash/boot/log capture, pstore harvesting) documented as tooling rather than anecdote.",
+   "LLM-assisted mainlining: how to use the kernel's Assisted-by policy, keep human review and DCO intact, and log provenance.",
+   "Safety rules for the device: never touching persist/modemst/fsg, backing up partitions, recovering from bad flashes; mostly scattered or absent.",
+   "Reliability and power: suspend/resume validation, battery drain measurement, long-uptime testing; guides stop at 'it boots'.",
+   "Panel/touch multi-sourcing and per-unit variant handling on devices where the bootloader cannot patch the DT.",
+   "Modem, call audio and GNSS (incl. AGPS on mainline) bring-up in a phone distro context; usually listed as 'missing'.",
+   "Keyboard/slider-specific hardware (e.g. Pro1/Pro1-X keyboard controller, hall sensors) is rarely covered.",
+   "Decision guide: which features to upstream first versus keep in a fork, with a tracked per-patch status."
+  ],
+  "qualcomm_topics_without_public_docs": [
+   "q6voice / voice-call audio: no kernel Documentation, no upstream driver (mainline 7.3 qdsp6 has none); only out-of-tree PRs (sc7280-mainline, sdm845-mainline) and q6voiced",
+   "Call audio on AudioReach (GPR) firmware: no public driver or doc found; every working call-audio stack found uses APR q6voice",
+   "QRTR: no Documentation/networking/qrtr.rst; source only (net/qrtr/ns.c, af_qrtr.c)",
+   "IPA: no .rst admin guide; only the sysfs ABI, DT binding qcom,ipa.yaml and source comments (ipa_qmi.c)",
+   "The end-to-end IPA bring-up recipe (DPM open-port, then WDA QMAP, then rmnet with checksum flags) is not written down anywhere public in one place; it is reconstructed here from qmicli, IPA sysfs, the rmnet docs, libqmi NEWS and ipa-netmgr",
+   "ModemManager's own QRTR/IPA/DPM/QMAP logic: in source on gitlab.freedesktop.org only (Claude-blocked)",
+   "Venus / Iris video: DT bindings only, no admin-guide page",
+   "AudioReach userspace and topology: no documentation retrieved (audioreach-topology repo has no fetchable README)",
+   "SSC / libssc primary docs: all on AI-blocked hosts (codeberg, libssc.dylanvanassche.be); only hexagonrpc's README is reachable",
+   "GNSS on mainline Qualcomm (QMI LOC through ModemManager or gpsd): no public doc found; the 2022 talk notes gpsd patches could not land",
+   "Ubuntu Touch mainline Qualcomm: none (Halium only)",
+   "Mobian per-device Qualcomm docs: none on the Debian wiki beyond the device list",
+   "Linux Plumbers: no phone-specific Qualcomm mainlining talk found (only Android-on-mainline/DB845c and boot-chain/GBL items)",
+   "Collabora: no Qualcomm phone bring-up post found (Collabora posts on Snapdragon are about Android graphics, Turnip CI and freedreno on db410c)"
+  ]
+ }
+}

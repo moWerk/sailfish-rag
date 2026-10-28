@@ -1,0 +1,43 @@
+{
+ "fxtec_pro1x": {
+  "note": "The F(x)tec Pro1-X as a SailfishOS device: the hybris port that exists today, how it was installed from stock Android and upgraded, and the state of mainline kernel support for the Pro1 and the Pro1-X. The mainline SailfishOS bring-up that followed is in SailfishOS/mainline_porting.json and, device-agnostic, in Mainline/. This file is an extract: the private corpus entry it comes from covers a whole fleet and only the two Pro1-X sections are published.",
+  "fxtec_pro1x_port": {
+   "checked": "2026-10-21",
+   "identity": "F(x)tec Pro1-X, codename qx1050, Snapdragon 662 (the Pro1, qx1000, is the Snapdragon 835). Port name halium-qx1050, aarch64.",
+   "maintainer": "Adam Pigg (piggz); the device config commits in 2026 are his (github.com/sailfish-on-fxtecpro1/droid-config-halium-qx1050).",
+   "images": "Newest flashable image: SFOS 5.0.0.62, testing and devel, GitLab CI sailfishos-porters-ci/halium-qx1050-ci pipeline 1759911327 (2025-04-09), artifacts about 740 MB each, kept forever. Flash notes: start from stock Pro1-X Android (never write persist; see install_2026_10_21), flash.sh from fastboot (forum t/12940 #12).",
+   "newer_than_images": "OBS repo nemo:testing:hw:fxtec:halium-qx1050:5.1 (sailfishos_5.1_aarch64). 5.1 exists as a repo, not as an image: flash 5.0.0.62, then upgrade (upgrade_to_5_1, confirmed 2026-10-21).",
+   "sources": [
+    "https://forum.sailfishos.org/t/12940",
+    "https://gitlab.com/sailfishos-porters-ci/halium-qx1050-ci/-/pipelines",
+    "https://repo.sailfishos.org/obs/nemo:/testing:/hw:/fxtec:/halium-qx1050:/5.1/",
+    "https://community.fxtec.com/topic/3609-pro1x-with-sailfishos/"
+   ],
+   "deep_discharge": "Pro1-X units stored switched off for long periods end up deeply discharged (two units stored switched off, 2026-10-20): they only trickle charge, briefly, while the power button is held. The community fix found during the F(x)tec RMA days (moWerk was there): a rubber band keeps the power button pressed while the phone sits on a charger, until the cell recovers enough to boot.",
+   "install_2026_10_21": {
+    "base_must_be_stock": "Confirmed: SFOS 5.0.0.62 flashed over LineageOS 22.0 stopped at the Android logo (RNDIS and ssh came up, no UI). The image brings only boot, dtbo and userdata and uses the vendor partition on the phone. Forum t/12940 #10 (Demati) saw the same and fixed it by flashing stock first. Caveat: the battery was also low then, so a low battery is not excluded as a cause.",
+    "stock_package": "F(x)tec stock v2.1.2 (build 2022-07-07, Android 11), fastbootd package macOS+Linux_v2.1.2_ota_img.zip from F(x)tec's Drive folder linked in community.fxtec.com topic 3903. Its QX1050_otaflash_mac+linux.sh writes the firmware chain (xbl, abl, tz, rpm, hyp, devcfg, keymaster, ...) on both slots, modem, system/system_ext/product/vendor, dtbo, vbmeta, boot, recovery; it never touches persist, modemst1/2, fsg or fsc and does not wipe userdata. Start in bootloader (vol down + power), `fastboot reboot fastboot`, then the script.",
+    "sequence_that_worked": "One fastbootd session: the stock script without its final reboot, then SFOS flash.sh steps (boot_a, dtbo_a, userdata, set_active a). Stock was not booted in between. About 3 min for stock, 10 min for userdata.",
+    "battery": "A Pro1-X hanging in a failed boot drains fast; the bootloader then reports battery-soc-ok: no (3.55 V) and a 500 mA hub port does not keep up with the bootloader screen. A >10 s power + vol down press gave a blinking red notification LED. Charging on a 2 A source fixed it; the phone draws 2-3 A while booting.",
+    "first_boot": "Black screen for a while after flashing, userland already up (sliding the keyboard lights its LEDs). Shutdown takes about 30 s.",
+    "access": "USB RNDIS: phone 192.168.2.15, DHCP to the host. ssh needs the developer-mode password set in the UI; the kickstart sets none."
+   },
+   "upgrade_to_5_1": {
+    "path": "5.0.0.62 -> 5.0.0.78 (last 5.0, stop release) -> 5.1.0.11, zypper dup per hop, reboot after each. Confirmed 2026-10-21.",
+    "repo_pins": "The 5.0 droid-config templates community repos as .../halium-qx1050:/%(release)/sailfish_%(release)_%(arch), which does not exist for 5.0.0.78 or 5.1. For the dups: ssu dr adaptation-community, -common, -kernel, adaptation-halium and add user repos with fixed URLs (hop 1: the 5.0.0.62 ones; hop 2: halium-qx1050:/5.1/sailfishos_5.1_aarch64, .../5.1/sailfish_5.1_i486, hw:/common/sailfishos_5.1_aarch64, halium:/11:/5.1/sailfishos_5.1_aarch64). The 5.1 droid-config templates with %(releaseMajorMinor); afterwards ssu er the four repos and ssu rr the pins.",
+    "hop1_conflict": "libKF5Archive5 5.34 (chum, in the image) vs Jolla's libkf5archive 5.75: same /usr/lib64/libKF5Archive.so.5. Nothing requires the old package; zypper in libkf5archive '!libKF5Archive5' before the dup.",
+    "hop2_conflict": "droid-config-halium-testing (2024) vs droid-config-halium (2026-06): /usr/share/halium-overlay/vendor/bin/vndservicemanager. dup --replacefiles, then zypper rm droid-config-halium-testing (nothing requires it).",
+    "hop2_numbers": "749 packages, 440 MiB, exit 107 (scriptlet failures, as on the C2's 5.1 hop). libhybris 0.0.5.57 -> 0.0.0+0.0.5.58 shows as a downgrade by version string; chum -> meego vendor change on the halium packages.",
+    "dns_bug_on_5_1": "5.1 resolves names through systemd-resolved (stub 127.0.0.53). The Pro1-X kernel 4.19.157 has CONFIG_ANDROID_PARANOID_NETWORK=y, so only gid 3003 (inet) may open network sockets; systemd-resolve is not in it, every lookup fails (resolved cycles servers within a second, direct UDP queries work). Fix: gpasswd -a systemd-resolve inet; systemctl restart systemd-resolved. The C2 (5.4 GKI) does not need it. Worth reporting to the porter.",
+    "failed_units_after": "systemd-remount-fs and lxc@multi-user fail at boot on 5.1.0.11; nothing observed broken by them."
+   }
+  },
+  "fxtec_mainline_2026": {
+   "checked": "2026-10-20 (subagent research; C = seen in source, I = inferred)",
+   "nura_rename": "postmarketOS renamed to Nura, announced 2026-09-27 (nura.eco/blog/2026/09/27/nura-rename/); wiki.postmarketos.org 301 -> wiki.nura.eco, mirror.nura.eco. Wiki, lore and gitlab.postmarketos.org sit behind an Anubis bot wall; use Wayback. [C]",
+   "pro1_qx1000": "Upstream msm8998-fxtec-pro1.dts since v5.16 (AngeloGioacchino Del Regno, 2021) but WITHOUT display, panel, GPU or keyboard matrix; no audio codec nodes in msm8998.dtsi. The fork gitlab.com/msm8998-mainline/linux (last commit 2023-02-05, 6.1) adds panel boe,bf060y8m-aj0 (driver upstream since v5.17), GPU node with a voltage hack, keyboard via AW9523 + out-of-tree gpio-fastmatrix-keyboard (pinctrl-aw9523 upstream since v6.9), haptics. pmaports MR !2984 (Danct12, 2022) closed unmerged; no device-fxtec-qx1000 package; linux-postmarketos-qcom-msm8998 stuck at 6.0. Mesa freedreno a5xx: GLES 3.1. [C]",
+   "pro1x_qx1050": "Upstream sm6115-fxtec-pro1x.dts by Dang Huynh (Danct12): base v6.5, display/GPU/touch/WiFi/USB/Type-C/SD/modem nodes v6.12, latest 2026-05-19. Missing upstream: keyboard, audio, camera, Bluetooth, battery, vibration. Nura package device-fxtec-qx1050 (testing) on kernel 6.10 from sm6115-mainline/linux. github.com/nyymi609/fxtec-pro1x-nixos (2026-10-14..20): vanilla 7.1 + 14 unsubmitted raw-diff patches (own AW9523 keyboard driver, cameras, audio, q6voice, battery), U-Boot 2026.10-rc, Mesa 26.2.3; claims calls/SMS/data/audio/cameras/charging/suspend work; ships a proprietary ADSP sensor blob; flash script touches boot_a, vbmeta_a, dtbo, userdata only. Mesa freedreno a6xx: GLES 3.2. [C]",
+   "sfos_on_mainline": "No SFOS-on-mainline work for qx1000/qx1050 found. Recipe from Mister_Magister's victara (VerdandiTeam/victara-mainline-linux, droid-config-victara): Mesa (dri, EGL, GLESv2, gbm, wayland-egl) + qt5 eglfs_kms, EGL_PLATFORM=drm, QT_QPA_PLATFORM=eglfs; PinePhone adaptation the same. Mister_Magister (2026-10-15) plans mainline ports for OnePlus 6/6T. The Pro1-X is the realistic mainline SFOS target; the Pro1 first needs display, GPU, keyboard and audio upstreamed. [C/I]"
+  }
+ }
+}

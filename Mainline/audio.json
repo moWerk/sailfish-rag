@@ -1,0 +1,133 @@
+{
+  "audio": {
+    "note": "Mainline Qualcomm audio on the ADSP (q6dsp/APR), the codec and amplifiers, UCM2, the sound server and call audio. Instance: F(x)tec Pro1-X (SM6115): sm8250 ASoC machine driver with sm4250 match data, WCD9370 codec (wcd937x) with rx/tx/va LPASS macros, two AW87339 class-K amplifiers on HPHL/HPHR, DMIC3 through the VA macro; PulseAudio 17 with UCM2 on SailfishOS (the reference NixOS port uses PipeWire). State as of 2026-10-27: speaker playback, the built-in microphone and Bluetooth A2DP work; the earpiece route switches but playback through it was not separately verified; the first sound-card instance is silent on some kernel builds and is worked around by re-creating the card at boot; headset jack detection is absent (no MBHC in DT); call audio does not work yet. SailfishOS policy files (ohm, xpolicy, Nemo modules) are in userspace_sailfishos.json.",
+    "dsp_and_codec": [
+      {
+        "title": "First sound-card instance silent on some kernel builds: re-create the card after one stream",
+        "general": "If a q6dsp sound card streams silence while every ASoC state looks right (PCM running, DSP back end on, codec and amp DAPM widgets on, amp enable GPIOs high), and the same userspace plays on other builds of the same source, toolchain and DTB, suspect boot-time ordering rather than a config option: a config bisect that gives contradictory halves (two disjoint halves both silent) is its signature. rmmod and modprobe of the machine driver is the test. Re-creating the card before any stream was not enough; playing a short stream on the first instance and then re-creating the card made the second instance play. Do this in a unit ordered before the user session. Booting with mem=4G is no test here: the q6asm DAI sits in an IOMMU DMA domain, so the DSP sees IOVAs, not physical addresses. The state dumps cannot tell silent and playing apart, so a microphone oracle is needed (see testing).",
+        "instance": "Pro1-X Linux 7.1, 2026-10-24: bisect halves A1 (cgroup v1) and A2 (quota/NLS) both silent while B played; mem=4G still silent (q6asm in apps_smmu 0x1c1, group type DMA); rmmod snd_soc_sm8250 + modprobe at about 10 min played; re-probe at 12 s and 61 s without a prior stream stayed silent. qx1050-audio-reprobe.service: route the FE, alsaucm enable Speaker, 1 s of digital silence via aplay on hw:0,0, rmmod/modprobe snd_soc_sm8250 at about 11-12 s; the oracle said PLAYS, PulseAudio got alsa_card.Pro1X, ringtone in Settings works from cold boot. Working hypothesis, not proven: clock controllers reach sync_state at about 20-23 s, so the bootloader-held clocks are cleaned up after the first probe. Kernel root cause (codec clock, soundwire enumeration, ADSP service) still open.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json audio_pulseaudio.kernel_build_matters, audio_pulseaudio.mem_4g_test; port log 2026-10-24 00:31-02:56; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-audio-reprobe.sh, port/notes/upstream.md"
+      },
+      {
+        "title": "Swap only the kernel binary to split a kernel fault from a userspace fault",
+        "general": "When the port is silent and the reference OS plays, change one layer at a time: boot the port's userspace on the reference OS's exact kernel Image and modules. If it plays, the fault is in your kernel build; if not, in userspace or boot.",
+        "instance": "Pro1-X 2026-10-23: SailfishOS userspace on the NixOS kernel binary (same source, GCC 16.2 and binutils 2.46, identical DTB) played; the SailfishOS kernel did not, while amixer contents, DAPM widgets, PCM state and amp GPIOs were identical on both.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 21:13-21:37 (state capture, tone heard)"
+      },
+      {
+        "title": "Carry the reference OS's audio init over: card, UCM, FE-to-BE routes, forced format",
+        "general": "Read the reference distro's audio module for the exact card name, UCM directory, init mixer routes and sample format before writing sound-server config; distro WirePlumber fragments encode hardware facts. On q6dsp, a front-end PCM without a routed back end refuses to open with EINVAL ('no backend DAIs enabled'), and sound servers probe every PCM, so set the FE-to-BE mixer routes before the server starts. Also carry over forced sample format and rate and gain/compander defaults the UCM BootSequence does not apply reliably.",
+        "instance": "Pro1-X (nyymi609 flake, read 2026-10-23): card fxtec,pro1x-sndcard, model 'F(x)tec Pro1X', sm8250 machine driver with match data sm4250 (UCM conf.d/sm4250; copy symlinks with cp -a), FE MultiMedia1 = pcm0 playback, MultiMedia2 = pcm1 capture; UCM2 Pro1X with verbs HiFi and 'Voice Call', devices Speaker/Headphones/Earpiece/Mic. S24_LE is about 40 dB too quiet, so S16LE 48 kHz is forced. SailfishOS: qx1050-audio-init as an ExecStartPre drop-in of the user pulseaudio.service (RX_CODEC_DMA_RX_0 Audio Mixer MultiMedia1, MultiMedia2 Mixer VA_CODEC_DMA_TX_0, HPHL/HPHR volume 12, compander off because right was louder than left) and daemon.conf.d/40-qx1050.conf; this gave a working Speaker sink.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "audio research report 2026-10-23 19:16 (flake source read); Pro1-X port repo port/notes/research/research-audio.md, port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-audio-init, port/droid-config-qx1050/sparse/etc/pulse/daemon.conf.d/40-qx1050.conf"
+      },
+      {
+        "title": "Headset switching needs jack detection in the kernel",
+        "general": "Automatic headphone switching needs an input device with SW_HEADPHONE_INSERT / SW_MICROPHONE_INSERT (named '* Jack' or 'Headset Jack'). The sm8250 machine driver creates that jack only when the codec has MBHC configured in the DT; without it headphones are a manual port switch, and no sound-server setting can fix it.",
+        "instance": "Pro1-X DTS has no MBHC properties; headset detection untested as of 2026-10-27.",
+        "confidence": "inferred",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/notes/research/research-audio.md"
+      },
+      {
+        "title": "Speaker pops at boot and on USB plug: check the reference OS, then the amplifier driver",
+        "general": "Record pops on the reference OS too; if they happen there as well, they are kernel or hardware level and no sound-server tweak will fix them. On Awinic class-K amps behind the codec HPH outputs, candidates are the driver pulsing the enable GPIO high during the chip-ID read and DAPM powering the amp before the HPH stage; a 1 s suspend-on-idle cycles the amp per notification, so use a longer suspend timeout until understood.",
+        "instance": "Pro1-X 7.1: two pops during boot and one on USB plug, on NixOS too. aw87339_i2c_probe requests the enable GPIO as GPIOD_OUT_HIGH, reads the chip id, then drives it low (about a 2 ms amp-on pulse per amp); test GPIOD_OUT_LOW. The port uses module-suspend-on-idle timeout=5.",
+        "confidence": "inferred",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 (ground truth); Pro1-X port repo port/notes/research/research-audio.md"
+      },
+      {
+        "title": "wcd937x warnings on the voice path",
+        "general": "Expect kernel warnings on wcd937x codecs when the voice route powers up: wcd937x_codec_enable_ear_pa calls enable_irq on an interrupt that was not disabled ('Unbalanced enable for IRQ', WARNING in kernel/irq/manage.c), plus 'clk already disabled' on each codec power cycle. Harmless for operation so far; candidate upstream fixes. q6afe may also log 'Unknown cmd 0x100f6'.",
+        "instance": "Pro1-X Linux 7.3.0-qx1050, 2026-10-27, on switching to the Voice Call verb: 'Unbalanced enable for IRQ 198', 76 'wcd937x clk already disabled' during a click loop.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "journalctl -k after pactl set-card-profile, 2026-10-27; Pro1-X port repo port/packages/qx1050-voicecall/README.md"
+      }
+    ],
+    "sound_server": [
+      {
+        "title": "PulseAudio 16+ names UCM profiles '<Verb> (<devices>)'",
+        "general": "With PulseAudio 16 and later, UCM card profiles are named by verb plus devices, for example 'Voice Call (Earpiece, Mic)' and 'HiFi (Mic, Speaker)'. Policy layers written for the old bare names ('HiFi', 'Voice Call') fail every switch ('No such entity'), quietly in the logs, and calls connect with no audio. Map each call device type to its full profile name from pactl list cards, and the media types to the HiFi profile with the same devices so the switch back succeeds.",
+        "instance": "Pro1-X SailfishOS 5.2, PulseAudio 17, 2026-10-27: pactl set-card-profile alsa_card.Pro1X \"Voice Call (Earpiece, Mic)\" works, the short name fails; SailfishOS xpolicy.conf fixed (userspace_sailfishos.json).",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, port/droid-config-qx1050/sparse/etc/pulse/xpolicy.conf"
+      },
+      {
+        "title": "Jolla's PulseAudio 17.0+git1 aborts on a UCM device shared by two verbs",
+        "general": "PulseAudio 17 before upstream commit ed3d4f08 ('alsa-ucm: Replace port device UCM context assertion with an error', 2024-01) aborts with Assertion 'dev == data->device' failed in pa_alsa_ucm_set_port() when two UCM verbs declare a device of the same name (the port object is shared per card). Use a build that carries the fix.",
+        "instance": "Jolla's pulseaudio 17.0+git1 on SailfishOS 5.1; piggz's nemo:devel:hw:pine:dontbeevil ships pulseaudio 17.0+git2+master.20260702 with the fix, which installs on 5.1.0.11 with the Nemo modules still working (Pro1-X, 2026-10-23). Upstream ask: Jolla should pick the fix so native ports can use stock PulseAudio.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json audio_pulseaudio.pa17_ucm_assert; port log 2026-10-23 19:57-19:58; Pro1-X port repo port/notes/upstream.md"
+      },
+      {
+        "title": "UCM outputs sharing one PCM need ConflictingDevice lists",
+        "general": "Without ConflictingDevice lists for outputs on the same PCM, PulseAudio builds combination ports.",
+        "instance": "Pro1-X UCM: Speaker, Headphones and Earpiece all on hw:X,0.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json audio_pulseaudio.ucm_conflicts; Pro1-X port repo port/notes/research/research-audio.md"
+      },
+      {
+        "title": "Bring PulseAudio up in stages; .fail aborts on one missing module",
+        "general": "Start with a minimal .pa under .nofail (alsa-card, native-protocol-unix, always-sink) to prove the hardware path, then add policy modules. A .pa under .fail aborts the daemon if any load-module fails (a policy or vendor module not installed, a table missing); use .ifexists for optional modules.",
+        "instance": "Pro1-X research stages A/B/C; the final arm_qx1050_default.pa uses .ifexists for keepalive, systemd-login and dbus-protocol.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/notes/research/research-audio.md, port/droid-config-qx1050/sparse/etc/pulse/arm_qx1050_default.pa"
+      }
+    ],
+    "call_audio": [
+      {
+        "title": "Call audio on q6 has no upstream driver; working stacks carry q6voice plus extra glue",
+        "general": "Mainline (7.3) has no q6voice; every working phone stack carries it out of tree (sdm845-mainline since 5.17, sc7280-mainline for the Fairphone 5 on 7.2). Which stack applies depends on the DSP firmware, not the SoC: APR firmware uses q6voice with the sm8250 machine driver, AudioReach firmware has no public call-audio driver. The Fairphone 5 integration additionally needs a 'dummystreamhack' to open the streams and a UCM Voice Call profile, and its microphone works only from the second call onward (known bug). postmarketOS q6voiced opens the voice PCM on oFono call state over D-Bus, which maps directly onto SailfishOS.",
+        "instance": "Pro1-X: q6voice is in the port's 7.3 series; call audio not working yet (2026-10-27, qx1050-voicecall 0.1-4). Candidates to try: q6voiced instead of the ported shell helper, the dummystream approach, a second call.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "sc7280-mainline linux PR 35, postmarketOS q6voiced (source repository), sdm845-mainline"
+      },
+      {
+        "title": "q6voice call audio: open the hostless VoiceMMode1 PCM during the call and keep the codec powered",
+        "general": "In-call audio on q6dsp (APR) needs the q6voice driver (MVM/CVS/CVP plus the q6voice DAI, an out-of-tree series by Stephan Gerhold from msm8916-mainline), a UCM 'Voice Call' verb routing the codec DMA back ends to VoiceMMode1, and a helper that opens the VoiceMMode1 PCM (device 5) hostless in both directions while the telephony stack reports a call; that starts the DSP voice session (postmarketOS q6voiced, voicepcm.c). Opening it before the call does not work. Keep playback and capture streams open on the voice sink and source so the codec stays powered. Porting the helper means switching its call trigger to the OS's telephony stack and matching that OS's sink names and tools.",
+        "instance": "Pro1-X SM6115, Linux 7.3 (CONFIG_SND_SOC_QDSP6_Q6VOICE), wcd937x; package qx1050-voicecall 0.1-2..0.1-4 (voicepcm.c and pro1x-voice-call from fxtec-pro1x-nixos, reworked to watch oFono VoiceCallManager instead of mmcli; SailfishOS has no paplay/parec, so gst-launch-1.0 with pulsesink/pulsesrc; busybox setsid has no -f; sink names alsa_output.Pro1X.Voice_Call__... instead of NixOS's). State 2026-10-27: the profile switch starts and stops the helper, the voice session starts on hw:0,5, keep-alives run, but no audio in either direction in the calls made so far.",
+        "confidence": "inferred",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, port/notes/research/research-audio.md, port/kernel/HANDOVER.md; /proc/asound/pcm"
+      },
+      {
+        "title": "A rhythmic 'tack' during a call is the codec power-cycling",
+        "general": "A repeating pop every 150-300 ms during a call means the codec or amplifier powers on and off; every sound-server restart or profile switch pops too. Keep-alive streams that hold the DAPM path up reduce it, and a policy loop that kills and restarts them causes it (see the keep-alive classification entry in userspace_sailfishos.json). Tell the person listening that the tester's own restarts cause pops.",
+        "instance": "Pro1-X wcd937x, 2026-10-27: 'clk already disabled' logged 76 times during the loop.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "journal counts and moWerk's report, 2026-10-27"
+      },
+      {
+        "title": "Policy notify loop: UCM profile switches make ohmd reroute forever",
+        "general": "Card-profile-per-route (UCM ConflictingDevice) means every route change destroys and recreates sinks. Any OS policy layer that treats sink removal as device unplug will reroute and can loop; on SailfishOS that is xpolicy notify, see userspace_sailfishos.json. A rhythmic click on every output during a call is the audible symptom: the codec powering up and down.",
+        "instance": "Pro1-X (qx1050) SailfishOS 5.2.0.22, kernel 7.3.0-qx1050, PulseAudio 17: during calls the card flipped between 'Voice Call (Earpiece, Mic)' and 'Voice Call (Mic, Speaker)' about five times a second (cycle 0.18 s). The codec power-cycled audibly (a 'tack' loop on earpiece, a buzz on speaker; wcd937x 'clk already disabled' every 0.3 s) and no call audio passed. Found with dbus-monitor --system (policy info signals, audio_actions decisions, org.nemomobile.Route.Manager AudioRouteChanged earpiece/speaker/earpiece within 7 ms) and pactl subscribe. disable_notify on 18 rules (port commit f4f1bef) ended the loop; call audio still silent afterwards, a separate problem.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port commit f4f1bef; call logs on device /root/calllog-2"
+      }
+    ],
+    "testing": [
+      {
+        "title": "Microphone-versus-speaker loopback oracle for unattended audio tests",
+        "general": "For audio regressions that need many reboots, record the built-in microphone while playing a test tone and compare the RMS against a calibrated noise floor; log PLAYS or SILENT per boot from a oneshot unit. It needs one calibration on a playing kernel and lets a bisect or reboot loop run without a listener. Remove the self-test unit from release builds.",
+        "instance": "Pro1-X tools/audio-loopback-test.sh: records hw:0,1 via the UCM Mic while speaker-test plays 440 Hz on hw:0,0, RMS via od -td2 | awk; noise floor about 220, tone about 1166 (speaker, HPHL 12); the earpiece at low drive is not detectable. qx1050-audio-selftest.service (bring-up only).",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json audio_pulseaudio.ears_free_test; port log 2026-10-24 00:24-00:45; Pro1-X port repo port/README.md"
+      }
+    ]
+  }
+}

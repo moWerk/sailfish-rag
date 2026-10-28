@@ -1,0 +1,133 @@
+{
+ "boot": {
+  "note": "Bootloader, boot layout, bring-up order, dual boot with a reference OS, and the first boot of a fresh rootfs. The F(x)tec Pro1-X (SM6115) port boots U-Boot (packed as an Android boot image in boot_a) and extlinux from the NixOS ext4 on userdata; SailfishOS lives as a directory on that filesystem and is entered through a one-shot extlinux entry and a busybox initramfs, so every crash falls back to NixOS. State as of 2026-10-27: this loop is stable and used daily; the port still depends on the NixOS partition for its boot menu, kernel location and firmware. General bring-up order and bootloader lessons from other phone ports are added with confidence reported.",
+  "bring_up_order": [
+   {
+    "title": "Bring-up order: initramfs shell first, then one peripheral at a time",
+    "general": "The first target on a new SoC or board is a shell from an initramfs with only CPUs, memory, reserved memory, timer, interrupt controller, a UART with earlycon (or simple-framebuffer), and a ramoops node. Then, in order: clocks (with GDSC power domains), pinctrl, regulators/PMIC, USB gadget networking for ssh, storage, then display panel, touch, GPU, Wi-Fi/Bluetooth, audio, sensors, charging/fuel gauge, modem and remoteprocs, camera. Each compatible added needs its Kconfig symbol. Upstream ordering for a whole SoC follows the same logic: PMIC, clock/reset, power domains, storage, network, low-speed buses, then GPU.",
+    "instance": "On the Pro1-X the SoC and most board nodes were already upstream, so the port started at the full-system stage; the order still decided which kernel options had to be built in (see kernel.json).",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://bootlin.com/pub/conferences/2016/elce/clement-arm64-soc-checklist/clement-arm64-soc-checklist.pdf (Bootlin, CC BY-SA 3.0); https://mainlining.dev/ (Iskren Chernev); https://www.collabora.com/news-and-blog/news-and-events/initial-upstream-support-for-the-rockchip-rk3576.html (Collabora); https://lpc.events/event/19/contributions/2124/ (Google/Linaro, gs101)"
+   },
+   {
+    "title": "Start the board DTS from the SoC reference board and keep simple-framebuffer as fallback",
+    "general": "Begin a phone's board DTS from the SoC vendor's reference board DTS (MTP, QRD), validate the regulators against the downstream DT, and add a simple-framebuffer for early display. A first boot can need as little as about 180 lines of SoC dtsi and 40 lines of board DTS. Enumerate the SoC blocks up front (clocks, TLMM, PMIC regulators, remoteprocs, QUP serial engines, IOMMU, interconnects, UFS/eMMC, GPU/DSI) to plan the order.",
+    "instance": "General guidance from Qualcomm phone ports (SDM845, SM7225).",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_845/ (Caleb Connolly, FOSDEM 2022); https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss, FOSDEM 2023)"
+   },
+   {
+    "title": "Know the arm64 boot contract when nothing prints",
+    "general": "The bootloader must hand over a DTB that is 8-byte aligned and at most 2 MB (address in x0), enter the kernel with the MMU off and all CPUs at the same exception level, have programmed CNTFRQ, and on GICv3 have set up ICC_SRE at EL3. arm64 kernels do not self-decompress. Secondary cores come up through PSCI or spin-table as declared in the DT; non-compliant PSCI firmware is a common phone quirk.",
+    "instance": "General guidance; the Pro1-X uses U-Boot, which handles these.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/arch/arm64/booting.html; https://lpc.events/event/19/contributions/2124/"
+   }
+  ],
+  "bootloader": [
+   {
+    "title": "Mainline layout on A/B Qualcomm phones: U-Boot in boot_a, rootfs on userdata",
+    "general": "A common mainline layout on A/B Qualcomm phones: U-Boot packed as an Android boot image in boot_a, vbmeta with verification disabled, dtbo erased, the rootfs as a raw ext4 image on userdata, and U-Boot reading extlinux.conf from that ext4. Slot b stays unused. fastboot prints 'Invalid sparse file format' for a raw image; that is normal, it converts on the fly.",
+    "instance": "Pro1-X (nyymi609 flake, 2026-10-22): erase dtbo, flash boot_a (U-Boot, 608 KB), vbmeta_a (4 KB, verification off), userdata (5.9 GB ext4, label nixos, /dev/sda13), set_active a; qbootctl -m at boot only writes slot metadata. The rootfs write took about 2 minutes.",
+    "confidence": "confirmed",
+    "date": "2026-10-22",
+    "source": "port log 2026-10-22 21:34-21:43 (flash script read, flash log)"
+   },
+   {
+    "title": "Chainload U-Boot from the signed vendor bootloader",
+    "general": "The signed vendor bootloader usually cannot be replaced, but U-Boot can be booted as the 'kernel' it loads. U-Boot for Qualcomm uses the upstream Linux DT (deviations in a separate -u-boot.dtsi), needs only stub clock/pinctrl drivers plus UFS PHY data for a new SoC, and offers extlinux and UEFI, so a distro can update kernels without rebuilding Android boot images. Get Linux booting first, enable U-Boot's framebuffer so errors are visible without UART, and bisect U-Boot crashes by disabling drivers.",
+    "instance": "Pro1-X: U-Boot 2026.10-rc from the NixOS flake in boot_a.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://archive.fosdem.org/2024/events/attachments/fosdem-2024-1716-u-boot-for-modern-qualcomm-phones/slides/22104/fosdem24_aDevbas.pdf (Caleb Connolly, FOSDEM 2024); https://docs.u-boot.org/en/latest/board/qualcomm/phones.html"
+   },
+   {
+    "title": "Deal with the vendor bootloader's dtbo handling first",
+    "general": "Vendors modify the Android bootloader; some refuse to boot or patch the DT from the dtbo partition. Erasing dtbo often suffices on Qualcomm; otherwise a crafted dtbo is needed. A shim bootloader such as lk2nd can normalise quirky vendor bootloaders across many models. For Android-style boot images, read offsets and header version from the stock image (unpack_bootimg) before building one; wrong values simply do not boot.",
+    "instance": "Pro1-X: the flash erases dtbo.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss); https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/ (Nikita Travkin); https://docs.ubports.com/en/latest/porting/introduction/index.html (UBports)"
+   },
+   {
+    "title": "Keep previous boot entries selectable from a bootloader menu",
+    "general": "With U-Boot and extlinux, keep earlier kernel/system generations selectable from a boot menu (volume key), so a bad kernel never needs a reflash.",
+    "instance": "Pro1-X NixOS: holding Vol-Down at power-on shows prev*.conf entries regenerated by the pro1x-boot-menu service; used as fallback while testing phosh and SailfishOS.",
+    "confidence": "confirmed",
+    "date": "2026-10-22",
+    "source": "port log 2026-10-22 23:31, 2026-10-23 11:01"
+   },
+   {
+    "title": "Native SailfishOS ports boot without droid-hal-init and without an Android boot image",
+    "general": "A native (non-hybris) SailfishOS port removes droid-hal-init and its scripts through delete_file.list and uses systemd directly as init. Boot is U-Boot or Tow-Boot plus kernel Image and DTB (boot.scr or extlinux), with a boot-mount generator if /boot is separate.",
+    "instance": "PinePhone: Tow-Boot, /boot/boot.scr, kernel, no initramfs. Pro1-X: U-Boot extlinux plus the bind-mount initramfs (unique to this port). victara (Moto X 2014): mainline kernel inside an Android boot image via aboot.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "Pro1-X port repo port/notes/research/research-packaging.md"
+   },
+   {
+    "title": "Contrast: hybris images depend on the vendor partition already on the phone",
+    "general": "A halium/hybris image that flashes only boot, dtbo and userdata uses whatever vendor partition is on the phone, so install the stock base it was built against first. A mainline port carries its own firmware and avoids this dependency.",
+    "instance": "Pro1-X halium SailfishOS 5.0.0.62 flashed over LineageOS 22.0 hung at the Android logo (also reported in forum thread t/12940 by Demati); after F(x)tec stock v2.1.2 and the SailfishOS flash.sh steps in one fastbootd session it booted. Confounded by a low battery at the time.",
+    "confidence": "inferred",
+    "date": "2026-10-21",
+    "source": "port log 2026-10-21 13:12-16:32; SailfishOS/devices.json fxtec_pro1x_port.install_2026_10_21; forum.sailfishos.org/t/12940"
+   }
+  ],
+  "dual_boot": [
+   {
+    "title": "Second OS as a directory, entered by a busybox initramfs bind mount",
+    "general": "A mainline port can share a partition with an existing OS without repartitioning: keep its rootfs as a directory on the existing ext4; a tiny static-busybox initramfs mounts the partition by label, bind-mounts the directory as the new root, moves the parent mount into the new root and switch_roots; any failure reboots. Keep the parent filesystem visible (here /mnt/nixos), because a second mount of the same device is refused once the bind shows it on /.",
+    "instance": "Pro1-X: /sfos/rootfs on the NixOS ext4 (label nixos), own kernel Image and DTB in /boot/sfos, U-Boot extlinux entry with INITRD ../sfos/sfos-initramfs.cpio.gz.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "SailfishOS/mainline_porting.json dual_boot_nixos.layout; Pro1-X port repo port/initramfs/init, port/scripts/build-initramfs.sh"
+   },
+   {
+    "title": "One-shot boot of the port; every crash falls back to the reference OS",
+    "general": "Arm a single boot of the port by keeping the stock extlinux.conf as a backup and writing a copy whose DEFAULT is the port entry; the port's initramfs moves the backup back before switch_root. A crash or hang can then never strand the device, but every crash and every later reboot lands in the reference OS, and the next test boot must be re-armed. Make arming scriptable from both OSes and from the host, keep root ssh on both, copy kernel/DTB/cmdline from the default entry and strip the other OS's init= and root= arguments, and append the port entry at the end so the menu entries stay. Only making the port the default entry makes a crash return to the port.",
+    "instance": "Pro1-X: sfos-boot-once.sh (from NixOS, user nixos with sudo; or from SailfishOS with DATA=/mnt/nixos) writes DEFAULT sfos into /boot/extlinux/extlinux.conf on the NixOS partition; sfos-kernel-install-from-nixos.sh installs Image/DTB to /boot/sfos and modules to /sfos/rootfs/lib/modules/<ver> and arms the one-shot ('armed: next boot is SailfishOS once'). Two reboots on 2026-10-25 and the crash on 2026-10-27 landed in phosh/NixOS.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "Pro1-X port repo port/scripts/sfos-boot-once.sh, port/initramfs/init; port commit 44ac7f1"
+   },
+   {
+    "title": "Tell which OS booted by its ssh host key",
+    "general": "A dual-boot device answers on the same USB network address under both OSes with different host keys (and on Wi-Fi possibly with a random MAC per connection). Keep one known_hosts file per OS and identify the running OS by fingerprint (ssh-keyscan | ssh-keygen -lf); a host-key mismatch is the quickest sign that the device booted the other OS.",
+    "instance": "Pro1-X at 172.16.42.1: known_hosts_pro1x2 (NixOS, user nixos) and known_hosts_pro1x2_sfos (SailfishOS, root); NixOS's Wi-Fi MAC is random per connection, so the phone was found on Wi-Fi by host key scan.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 15:21, 2026-10-27; SailfishOS/mainline_porting.json dual_boot_nixos.nixos_wifi"
+   },
+   {
+    "title": "Ties to the host OS that remain before a standalone release",
+    "general": "A port that boots through another OS's partition still depends on it for the boot menu, the kernel location, the initramfs build and the firmware. Leaving it needs an own boot partition or extlinux, an initramfs built outside the other distro's tooling, and firmware RPMs.",
+    "instance": "Pro1-X as of 2026-10-26: U-Boot menu and /boot/sfos on the NixOS partition, firmware from the Nix pro1x-firmware package, the install path writes /mnt/nixos/boot/sfos.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/kernel/README.md"
+   }
+  ],
+  "rootfs_and_first_boot": [
+   {
+    "title": "The first boot of a fresh rootfs can stall; prepare to read it from elsewhere",
+    "general": "The very first boot of a fresh rootfs runs first-boot jobs (device user creation and similar) and can stall. Enable a persistent journal and a periodic black-box snapshot before the first boot, so the failure can be read from the other OS.",
+    "instance": "Pro1-X SailfishOS 5.1, 2026-10-23: the first boot sat 31 minutes at 'A start job is running for Indicate boot is done' (init-done.service waits for the user-session flag), text console, no network; cause unknown because the journal was volatile. The second boot, with a Storage=persistent drop-in, reached the startup wizard 14 s after kernel start.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "port log 2026-10-23 11:34-12:23"
+   },
+   {
+    "title": "SailfishOS creates its device user on first boot",
+    "general": "A hand-assembled SailfishOS rootfs does not need the device user pre-created: /usr/lib/startup/start-autologin creates defaultuser (uid 100000) on first boot.",
+    "instance": "SailfishOS 5.1.0.11 rootfs built with zypper --root: no user >= 1000 in /etc/passwd; the first boot produced defaultuser.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "port log 2026-10-23 10:41 (rootfs inspection)"
+   }
+  ]
+ }
+}

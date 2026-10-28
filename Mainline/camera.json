@@ -1,0 +1,231 @@
+{
+ "camera": {
+  "note": "Mainline Qualcomm cameras: CAMSS, sensor and lens (VCM) drivers, libcamera's simple pipeline with the software ISP, autofocus, frame rates, and hardware video encoding (Venus) for recording. Instance: F(x)tec Pro1-X (SM6115): Sony IMX582 rear with a DW9800 VCM, Samsung S5K4H7 front (fixed focus), CAMSS on CSIPHY2/CSID2/VFE2, out-of-tree sensor and lens drivers from the NixOS port; libcamera 0.7.2 with the port's autofocus patches. State as of 2026-10-27: both cameras work in the SailfishOS camera app; the GPU software ISP gives a 10-20 fps viewfinder (cam reaches 32 fps at 1280x960); rear autofocus works through a patched upstream RFC plus an own sharpness statistic; 1080p30 H.264 recording works through Venus with linux-firmware's image. The SailfishOS app glue (Qt 5.6 camerabin patches, sandbox, boosters) is in userspace_sailfishos.json.",
+  "kernel_and_sensors": [
+   {
+    "title": "Mainline Qualcomm camera path: CAMSS plus libcamera's simple pipeline and software ISP",
+    "general": "On CAMSS SoCs without a mainline ISP driver, libcamera's path is the simple pipeline handler with the software ISP (GPU debayer in 0.7.x). The kernel needs the sensor and VCM drivers, the CAMSS SoC resources, and UDMABUF plus DMABUF_HEAPS_SYSTEM for the software ISP; userspace needs a CameraSensorHelper, static properties and a tuning YAML per sensor.",
+    "instance": "Pro1-X: IMX582 rear + DW9800 VCM, S5K4H7 front, CAMSS sm6115 CSIPHY2/CSID2/VFE2; NixOS uses libcamera 0.7.2 with IMX582/S5K4H7 helper patches and tuning on the simple pipeline; SailfishOS on libcamera 0.7.2 the same.",
+    "confidence": "confirmed",
+    "date": "2026-10-27",
+    "source": "Pro1-X port repo port/notes/research/research-sensors-camera.md, port/kernel/pro1x.fragment; research report 2026-10-23 19:13"
+   },
+   {
+    "title": "One sensor failing its probe hides every camera",
+    "general": "CAMSS registers its media device only when every sensor in its async notifier has bound, so one sensor timing out on I2C at power-up (-110) makes libcamera list zero cameras, the healthy one included. A manual bind (echo <bus-addr> > /sys/bus/i2c/drivers/<drv>/bind) fixes it at runtime; the real fix is the sensor driver's power-up timing (regulators, clock, reset delays). A userspace bind-retry service is a crutch.",
+    "instance": "Pro1-X Linux 7.1, 2026-10-24/25: s5k4h7 'Error reading reg 0x0000: -110' at boot, fixed by echo 3-002d > /sys/bus/i2c/drivers/s5k4h7/bind; later IMX582 the same, fixed by echo 2-0010 > /sys/bus/i2c/drivers/imx582/bind. The opt-in retry service qx1050-camera-probe was disabled after an early-boot crash into download mode; the forensics place the crash before the service would have run, so it is probably innocent, but it stays opt-in. On the first 7.3 boot both sensors and the lens probed without a rebind; that the timing problem is gone is not proven.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-24 13:46, 2026-10-25 11:39, 2026-10-26 20:40; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-camera-probe.sh, port/notes/upstream.md"
+   },
+   {
+    "title": "The software ISP outputs at most sensor width minus 8: give sensors a slightly wider mode",
+    "general": "libcamera's software debayer keeps a 4-pixel border on each side horizontally, so a sensor mode can produce at most width-8 pixels. A request for exactly a mode's width (1920x1080 from a 1920x1080 mode) falls through to a much larger mode, costing frame rate and CPU. Expose a slightly wider mode in the sensor driver (or fix the debayer upstream). Height needs no margin for this Bayer pattern.",
+    "instance": "Pro1-X IMX582: a 1920x1080 request picked the 4000x3000 mode, 24 fps (sensor timing), debayer 49 ms in cam and 123-205 ms in the app, recorded video 6.5 fps; a 1912x1080 request picked the 1920x1080 mode at 48 fps. After widening the mode to 1984x1080: 1984x1080 picked, debayer 15.6 ms, about 46 fps in cam, smoother video viewfinder.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "cam -s width=1912/1920 comparisons 2026-10-25 11:52, 15:22; Pro1-X port repo port/kernel/HANDOVER.md"
+   },
+   {
+    "title": "Widening a binned sensor mode changes only the digital crop and output width",
+    "general": "On Sony sensors with on-chip binning followed by a digital crop, widening the output only changes the crop start and output width registers (0x0408/0x040c and 0x034c on IMX582) and the driver's mode size; analog readout, binning, timing and link frequency stay. Choose a width whose packed 10-bit stride stays 8/16-byte aligned and is a multiple of 16, and carry the change as a separate small patch over the driver.",
+    "instance": "Pro1-X imx582 1080p mode: full 8000-px width, a 4320-row band, 4x4 binned to 2000x1080, cropped 40 px each side to 1920. New: 1984 (0x7c0) wide, crop start 8 (7936 sensor px from x=32): 0x0409 0x28->0x08, 0x040d 0x80->0xc0, 0x034d 0x80->0xc0; HTS 2912->3040 (own estimate to keep CSI per-line slack; max about 92 fps instead of about 96). Patch sfos-imx582-1080p.patch. The stride reasoning is inferred; frames came at the right size and timing.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 13:34-15:23"
+   },
+   {
+    "title": "Check every camera's binned mode against the app's video size",
+    "general": "If a camera's fast (binned) mode is smaller than the requested video size, libcamera uses full resolution and video drops to single-digit fps with a software ISP plus encoder. Cap the video size per camera (for example 1280x720) or add a 16:9 mode.",
+    "instance": "Pro1-X front S5K4H7: fast mode 1632x1224, so 1920x1080 falls to 3264x2448 (about 17 fps in cam); in-app recording 48 frames in 6.6 s (about 7 fps), viewfinder about 20 fps. Not fixed as of 2026-10-25.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 11:52, 15:29"
+   },
+   {
+    "title": "A click from the camera module at start is the VCM driver's fast ramp",
+    "general": "A mechanical click at camera start on mainline (never heard on Android) is the voice-coil lens jumping: the mainline VCM driver powers the lens on every open, ramps to the rest position and parks to 0 on close almost instantly, and libcamera opens and closes the lens subdev several times per camera start (app, lock-screen camera process, then the stream). Fix it in the driver: slower soft ramps, a runtime-PM autosuspend delay after close so repeated opens do not power-cycle, no parking move at probe. Ringing control (SAC mode) would also damp scan steps but needs datasheet values; do not guess registers.",
+    "instance": "Pro1-X DW9800 driver from the NixOS port: 16-code steps of 1 ms each (about 7 ms per move). sfos-dw9800-soft.patch: about 64 ms ramps, 2 s autosuspend, no boot park. 7.3, 2026-10-26: 'no hard double clack on startup anymore', softer but still audible; faint ticking during an AF scan is expected. Located by the person with all sound off.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "driver source read; moWerk report 2026-10-26; Pro1-X port repo port/kernel/HANDOVER.md, port/notes/external-packages.md"
+   },
+   {
+    "title": "Prove the lens path by hand before blaming autofocus software",
+    "general": "Drive the VCM directly: open the lens V4L2 subdev (holding it open keeps runtime PM active), step V4L2_CID_FOCUS_ABSOLUTE through its range with v4l2-ctl a few seconds per step while a person watches the viewfinder, and ask which step was sharp. No change at all means the motor or its power is broken; a sharp step means the problem is purely software. media-ctl -p does not print ancillary lens links ('0 links' is normal). Sharp-or-blurry reports across boots only tell where the lens happened to rest.",
+    "instance": "Pro1-X DW9800 at i2c 2-000c (/dev/v4l-subdev20), Linux 7.1, 2026-10-25: positions 0/200/400/600/800/1023, 6 s each; 200 was 'dead sharp' at 1-2 m; the driver's rest position 100 is too far for near objects. Earlier, rest position 100 gave sharp photos one boot and blurry ones the next, and module option default_pos=0 did not help (removed). SailfishOS has no v4l-utils (native-common has 1.26.1); NixOS's binaries were borrowed.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 15:29-15:50 (sweep table, 'second step was dead sharp'); Pro1-X port repo port/notes/external-packages.md"
+   },
+   {
+    "title": "Hardware ISP and hardware AF statistics on SM6115 need reverse engineering",
+    "general": "Mainline has no driver for the SM6115 ISP processing blocks. Community advice is to capture how Android programs the ISP registers, which would also give hardware AF statistics; a large reverse-engineering task that needs a device running the vendor stack (a hybris port qualifies).",
+    "instance": "Advice from a community member, 2026-10-26; with the software ISP, AF on the Pro1-X took up to about 30 s before tuning because statistics are computed only on some frames.",
+    "confidence": "reported",
+    "date": "2026-10-26",
+    "source": "chat paste 2026-10-26"
+   }
+  ],
+  "libcamera": [
+   {
+    "title": "Use libcamera 0.6 or newer; 0.4 asserts on stop",
+    "general": "libcamera 0.4.0 asserts in PipelineHandler::stop() when a camera is released, so apps that release the camera on minimise die. Software-ISP stop fixes landed in 0.5.0 and request completion on stop in 0.6.0. Package a current release (0.7.2 here) from the existing distro packaging rather than relying on an old shared build (build details in packaging.json).",
+    "instance": "Pro1-X: OBS native-common had libcamera 0.4.0; after 0.7.2 (libcamera-qx1050, from mlehtima/libcamera packaging) swipe-away and return no longer crash (2026-10-24).",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 14:51, 16:02; Pro1-X port repo port/packages/libcamera-qx1050/README.md"
+   },
+   {
+    "title": "The GPU software ISP is on by default when EGL works; stream size sets the frame rate",
+    "general": "libcamera >= 0.6 builds the software ISP debayer for the GPU (DebayerEGL, 'SoftISP GPU acceleration: YES' in the meson summary) whenever EGL and GLES are found, and uses it at runtime when a surfaceless EGL display opens (config software_isp.mode cpu|gpu). With the CPU debayer a phone-class SoC gives a viewfinder below 10 fps and the debayer costs about 2.5 times more inside an app than in cam. With the GPU debayer on a mid-range GPU the frame rate is bound by the stream size: request a viewfinder-sized stream rather than scaling a full-sensor stream, and expect the app's display path to cost more on top.",
+    "instance": "Pro1-X IMX582, libcamera 0.7.2, Adreno 610 (Mesa 25.1.8): CPU debayer on 7.1/7.3 gave under 10 fps in jolla-camera and about 7 fps front video (2026-10-25/26). GPU debayer on SailfishOS 5.2 (2026-10-27): cam 31.8 fps at 1280x960, 20.3 at 2000x1500, 3-12 at 3992x3000; jolla-camera viewfinder 10-20 fps by eye, about 21 frame interrupts per second.",
+    "confidence": "confirmed",
+    "date": "2026-10-27",
+    "source": "libcamera build log; cam runs 2026-10-27; moWerk visual checks 2026-10-26 21:17 and 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+   },
+   {
+    "title": "Out-of-tree sensors need a CameraSensorHelper, static properties and a tuning file",
+    "general": "libcamera's software ISP needs a CameraSensorHelper (gain model, black level) and static sensor properties per sensor; without them it warns 'Failed to create camera sensor helper' / 'no static properties' and AE/AWB converge in about 1 s steps over about 30 s. Check whether another distro already carries them before writing your own.",
+    "instance": "NixOS port device/libcamera: imx582-sensor.patch and s5k4h7-sensor.patch (blackLevel 4096, AnalogueGainLinear{0,1024,-1,1024}, properties with deliberately empty sensor delays, so 'No sensor delays found' remains and is expected) plus tuning YAMLs (BlackLevel, Awb, Adjust, Agc); applied cleanly to libcamera 0.7.2 (libcamera-qx1050 release 2). Exposure then 'settles in few steps', ISO still 5-10 s to stabilise.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 20:08-23:09"
+   },
+   {
+    "title": "An unknown algorithm in a tuning file stops the software ISP",
+    "general": "If the IPA tuning YAML lists an algorithm that is not compiled into the installed libcamera (for example '- Af:'), the IPA fails to initialise ('Algorithm Af not found') and no image processing starts. Keep tuning files and library in lock-step; to roll back quickly, comment the entry out in /usr/share/libcamera/ipa/simple/<sensor>.yaml.",
+    "instance": "Pro1-X 2026-10-25: the first libcamera 0.7.2-3 build silently lacked the AF patches (see packaging.json, mb2 skips %prep) and the camera failed.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 16:09-16:10"
+   },
+   {
+    "title": "Give the session user the system dma-buf heap",
+    "general": "libcamera's software ISP allocates from /dev/dma_heap/system (and udmabuf). It is root-only by default, so the session user sees no cameras at all while root works. Ship a udev rule giving the heap group video, mode 0660. Diagnose by diffing LIBCAMERA_LOG_LEVELS=*:DEBUG output as user and as root.",
+    "instance": "Pro1-X 2026-10-24: /lib/udev/rules.d/71-qx1050-camera.rules (the NixOS port has the same rule for Phosh).",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "Pro1-X port repo port/droid-config-qx1050/sparse/lib/udev/rules.d/71-qx1050-camera.rules"
+   },
+   {
+    "title": "libcamerasrc as a GStreamer source: what clients must handle",
+    "general": "libcamerasrc's pad answers caps queries with a size-less template before streaming, so a client that reads resolutions from the source caps finds none (and may dereference a null width) and every caps is ANY, which runs everything at full sensor size. The libcamera GStreamer device provider ('libcameraprovider') builds caps for the VideoRecording role with discrete sizes plus one range and no framerate. Its GstDevice properties are api.libcamera.Location (a string enum 'CameraLocationFront' / 'CameraLocationBack', not an int) and api.libcamera.Rotation (int); select a camera with libcamerasrc's camera-name. gst_device_provider_factory_find can return an unloaded factory stub whose element properties are not visible, so load the feature first. A caps query handler in libcamerasrc would be the cleaner upstream fix.",
+    "instance": "Pro1-X 2026-10-24: found while patching Qt 5.6 camerabin for jolla-camera (userspace_sailfishos.json); the app then saw photo 3992x3000 and video 3200x1800.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 20:06-23:10; Pro1-X port repo port/notes/upstream.md"
+   }
+  ],
+  "autofocus": [
+   {
+    "title": "On a software-ISP stack autofocus is missing in three layers",
+    "general": "With libcamera's simple pipeline and software ISP (0.7.2), autofocus is absent in three places at once: (1) the software ISP IPA has only adjust/agc/awb/blc/ccm and its CPU statistics compute no sharpness, and the simple pipeline handler has no lens path; (2) libcamerasrc does not implement GstPhotography; (3) clients that need GstPhotography for focus (Qt5 camerabin) report focus unsupported, so tap-to-focus does nothing and no client flag can fix it. The VCM itself may be fine: the lens just sits at the driver's rest position. On Android-based ports the vendor HAL did AF, which is why it 'just worked' there. (An earlier note that the sensor drivers expose no VCM was wrong: the DW9800 is present; the missing piece was an AF algorithm.)",
+    "instance": "Pro1-X SailfishOS 5.1.0.11, libcamera 0.7.2 + libcamerasrc, 2026-10-25: jolla-camera logged 'Focus points mode selection is not supported' and 'Focus points selection is not supported'; the app did open and power the lens (held v4l-subdev20).",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "grep of libcamera 0.7.2 src/ipa/simple/algorithms, src/libcamera/pipeline/simple, src/gstreamer for LensPosition/AfMode/AfTrigger; camera log warnings 2026-10-25"
+   },
+   {
+    "title": "libcamerasrc exposes AF controls as properties, but not af-trigger",
+    "general": "libcamerasrc's GStreamer properties come from a hand-written allowlist in utils/codegen/gen-gst-controls.py. af-mode, af-metering, af-windows, af-range, af-speed and lens-position are exposed; AfTrigger is not (an action, not a state). A GStreamer client therefore uses AfMode=Continuous (and af-windows for tap-to-focus) rather than single-shot triggers.",
+    "instance": "libcamera 0.7.2, gst-inspect-1.0 libcamerasrc on the Pro1-X under SailfishOS, 2026-10-25.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "gst-inspect output; libcamera utils/codegen/gen-gst-controls.py lines 15-31"
+   },
+   {
+    "title": "Upstream state of software-ISP autofocus, October 2026",
+    "general": "Milan Zamazal's RFC v1 'Autofocus basics for software ISP' (libcamera patchwork series 6276, 2026-10-21, 7 patches) moves the IPU3 contrast AF into src/ipa/libipa/af.{cpp,h}, adds a softisp Af algorithm, adds lensControls to the soft IPA mojom and makes the simple pipeline call focusLens()->setFocusPosition() (V4L2_CID_FOCUS_ABSOLUTE). It deliberately leaves out the AF statistic (only a 'variance' placeholder). Earlier attempts: a manual focus patch by Vasiliy Doylov and Pavel Machek (patchwork 26241, February 2026; review said lens control belongs in the pipeline handler), Pavel's Librem 5 'l5' branch, Hans de Goede's unposted 'software-af-done' branch with a sharpness calculation in swstats_cpu, and Daniel Semkowicz's rkisp1 hill-climbing AF v6 (2023, never merged). After v0.7.2 upstream renamed src/ipa/simple to src/ipa/softisp and soft.mojom to softisp.mojom (commit ba33a822, 2026-08-20). In 0.7.2 only the IPU3 and Raspberry Pi pipelines move a lens.",
+    "instance": "Research for the Pro1-X IMX582 + DW9800 rear camera, 2026-10-25, checked against libcamera master 2c4b67c0 and the patchwork REST/mbox.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "research report 2026-10-25; libcamera patchwork series 6276; local grep of 0.7.2 ipu3/rkisp1"
+   },
+   {
+    "title": "Making the software-ISP AF RFC focus on a real device: three fixes and a sharpness statistic",
+    "general": "The RFC alone does not focus. Three issues: (a) the lens position was applied only on pipelines without frame-start events; (b) software-ISP statistics are computed only every fourth frame (kStatPerNumFrames), so the algorithm acted on stale statistics in three of four frames and must be gated on fresh ones; (c) without a lens it still set a focus value, so guard on lens presence (fixed-focus front cameras). The missing piece is a sharpness statistic in the CPU statistics pass: the sum of squared differences between same-colour neighbouring Bayer pixels in the central third of the frame, normalised (implemented for 10-bit packed Bayer only). Enable the Af algorithm only in the tuning file of the sensor that has a lens.",
+    "instance": "Pro1-X IMX582, libcamera 0.7.2-3 package (patches 0004-0010), imx582.yaml gets '- Af:', s5k4h7 none. Headless cam test: lens settled at 448 for a near object, sharpness about 150 at infinity rising to about 1120 at focus; in the app 2026-10-25 17:01: 'it focuses! ... photos are sharp', near and far.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "AF debug log and moWerk confirmation 2026-10-25; Pro1-X port repo port/patches/libcamera, port/notes/external-packages.md"
+   },
+   {
+    "title": "Tune the AF scan for a CPU-statistics software ISP",
+    "general": "The libipa contrast-AF constants inherited from IPU3 assume a hardware ISP with per-frame statistics. Make them tunable (af::Parameters read from the tuning file, IPU3 values as defaults) and for a software ISP use fewer settle frames and coarser steps (about 60 down to about 14 measurements per focus). A refocus threshold (maxChange) of 0.5 is too high: a far-focused frame of a near object loses less than 50 % sharpness, so refocus never triggers; 0.3 worked. Remaining limits: every scan starts at infinity, and statistics come every fourth frame.",
+    "instance": "Pro1-X IMX582, libcamera 0.7.2-4 (patch 0011): ignoreFrames 2 (was 10), coarse step 64 (was 30), fine step 16 (was 1) on a 0-1023 range, maxChange 0.3. 2026-10-26: 'refocus is faster now'.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "port log 2026-10-25 17:14-17:39; moWerk report 2026-10-26 21:17"
+   },
+   {
+    "title": "Backporting a libcamera master series to a release",
+    "general": "To apply a post-release libcamera series to 0.7.2: map softisp to simple/soft and IPASoftIsp to IPASoftSimple in the mbox; git am can choke on a mail whose header says US-ASCII while the body has non-ASCII names, so split the mbox with python's mailbox module into per-patch diff, message and author files and commit each with --author; git am --abort also rolls back already-applied patches of that run. 0.7.2 already passes tuning data as ValueNode, so algorithm code fits. Rejected hunks for pipelines you do not convert (IPU3) can be dropped.",
+    "instance": "libcamera 0.7.2 plus Zamazal series 6276 for the Pro1-X, branch qx1050-af, 2026-10-25 (charset failure on patch 3, manual reject fixes in patches 5 and 6).",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 15:58-16:00"
+   }
+  ],
+  "video_encoding": [
+   {
+    "title": "Venus on SM6115: the gen1 driver via the qcm2290 fallback, with a backported DT node",
+    "general": "Check whether the SoC DT has a video codec (Venus) node and which driver generation binds it. For SM6115 the node and a gcc-sm6115 vcodec GDSC flag change were applied upstream on 2026-07-08 (DT patches applied by Bjorn Andersson, Dmitry Baryshkov's series), after 7.1; backport both plus a board enable as one patch on older bases. The HFI Gen2 (iris) firmware does not work on SM6115 yet, so the gen1 venus driver binds via the qcom,qcm2290-venus fallback (AR50_LITE). Firmware version requirements are in firmware_remoteproc.json.",
+    "instance": "Pro1-X 2026-10-24/25: sfos-venus.patch on Linux 7.1 (gcc-sm6115.c, sm6115.dtsi, board DTS); upstream by 7.3. Result: encoder node qcom-venus-encoder /dev/video13, 1080p30 H.264 in hardware, about 30 fps including a CPU videoconvert to NV12.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "SailfishOS/mainline_porting.json camera_jolla_camera.venus_sm6115; port log 2026-10-24 20:02-20:04, 2026-10-25 01:24-02:10"
+   },
+   {
+    "title": "Native ports need their own encoders: v4l2h264enc and a ranked AAC encoder",
+    "general": "On hybris ports H.264 and AAC come from the Android media stack; a native port must supply them. A camera app that records MP4 with H.264 and AAC through encodebin writes only a header (a 965-byte file, ffprobe 'invalid STSD entries 0', GStreamer log 'Couldn't create encoder for format video/x-h264') when none is found. H.264: the SoC's V4L2 stateful encoder through gst-plugins-good's v4l2h264enc, which is only registered when the plugin is built with -Dv4l2-probe=true (Jolla builds false, compiling out v4l2h264enc/v4l2h264dec even when /dev/videoN is a working encoder). AAC: gst-libav avenc_aac is registered with rank none, so set GST_PLUGIN_FEATURE_RANK=avenc_aac:primary in the app's session environment.",
+    "instance": "Pro1-X SailfishOS: gstreamer1.0-plugins-good rebuilt as 1.26.11+git1-1.14.2.qx1050 (release above Jolla's 1.14.2.jolla); jolla-camera records MP4 (video/quicktime variant=iso) with video/x-h264 and audio/mpeg mpegversion=4. v4l2h264enc defaults to Baseline at about 28 Mbps.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "SailfishOS/mainline_porting.json camera_jolla_camera.video_encoders, camera_jolla_camera.gst_v4l2_probe; Pro1-X port repo port/patches/gst-plugins-good"
+   },
+   {
+    "title": "Check a media pipeline end to end headless before asking a person",
+    "general": "Prove encoders with gst-launch from videotestsrc, then from the real camera and microphone through encodebin with the app's exact profile; stop with SIGINT and -e for a clean EOS; copy the file to the host and check it with ffprobe/ffmpeg (streams, frame count, signalstats YAVG, volumedetect). Counting frames in the user's own recording gives the real frame rate.",
+    "instance": "Pro1-X: 150 frames of 1080p H.264 through Venus in 5.2 s; an in-app recording at 1920x1080 H.264 + AAC stereo at about 5.6 Mbit/s, speech peak -3 dB, rotation tag and EXIF portrait; frame counts revealed 6.5 and 7 fps recordings.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 01:34, 11:48, 15:29"
+   }
+  ],
+  "tooling": [
+   {
+    "title": "Prove the kernel camera path with libcamera's cam before any app",
+    "general": "cam -l and cam -c <id> --capture=1 --file=... are the first proof that CAMSS and the sensor drivers work end to end; gst-launch libcamerasrc ! videoconvert ! jpegenc is the second. Only then debug apps.",
+    "instance": "Pro1-X SailfishOS 2026-10-24: libcamera 0.4.0+git1 from native-common installed; cam additionally needed libevent (native-common), libyaml and elfutils-libs/libelf (Jolla oss repo); cam -l listed imx582 (rear) and s5k4h7 (front); one 3992x3000 ABGR8888 frame (47.9 MB) from the simple pipeline with software ISP; gst-launch worked (teardown abort in 0.4).",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 03:20; SailfishOS/mainline_porting.json sensors_camera.camera"
+   },
+   {
+    "title": "Address cameras by id, not by cam's index, and log the chosen mode",
+    "general": "cam -c <n> numbering is not stable across runs or boots; use the full camera id (the DT path) to be sure which sensor you measure. LIBCAMERA_LOG_LEVELS=SimplePipeline:0 shows the sensor mode picked and the debayer timing; cam -c <id> -p prints properties such as Rotation and Location without any app.",
+    "instance": "Pro1-X 2026-10-25: cam -c 1 once picked the front S5K4H7 (3264x2448); rear camera id /base/soc@0/cci@5c1b000/i2c-bus@0/camera@10. Inside a sandbox the ids differ (platform/soc@0/5c1b000.cci/i2c-2/2-0010 imx582) because /sys/firmware/devicetree is hidden.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-24, 2026-10-25 01:28-01:31, 11:52"
+   },
+   {
+    "title": "A stale GStreamer registry hides newly installed plugins",
+    "general": "gst-inspect, gst-launch and apps cache plugin features in a per-user registry (~/.cache/gstreamer-1.0/registry.<arch>.bin). After installing or rebuilding a plugin as root, delete the device user's registry, or export GST_REGISTRY=/tmp/<new>.bin for tests, before concluding a plugin is unusable. GST_DEBUG=v4l2*:7 gst-inspect-1.0 video4linux2 shows device probing; GST_PLUGIN_FEATURE_RANK=<feature>:primary changes a rank per process.",
+    "instance": "Pro1-X SailfishOS 5.1, GStreamer 1.26.11, 2026-10-24/25: jolla-camera found libcamerasrc only after defaultuser's registry was removed; confirmed v4l2h264enc missing and then present after the rebuild. gst-device-monitor-1.0 is not installed on SailfishOS.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 20:05, 2026-10-25 01:26"
+   },
+   {
+    "title": "Measure an app's camera frame rate from interrupts",
+    "general": "Without app logging, count the camera front-end interrupts over a few seconds (/proc/interrupts, the camss vfe line) while the app runs; most VFEs raise one interrupt per frame, but verify the ratio with a capture of known rate first.",
+    "instance": "Pro1-X: camss_msm_vfe0 at 21.2/s in the jolla-camera viewfinder, 2026-10-27.",
+    "confidence": "inferred",
+    "date": "2026-10-27",
+    "source": "port log 2026-10-27"
+   }
+  ]
+ }
+}

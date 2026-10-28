@@ -1,0 +1,93 @@
+{
+ "hazards": {
+  "note": "What crashed, froze or could brick a device during the F(x)tec Pro1-X (SM6115) mainline port, and the never-do list that follows from it. State as of 2026-10-27: no device has been bricked; one early-boot crash into Qualcomm download mode and one kernel crash from a remoteproc stop were met and recovered by a long power press. Hazards that belong to one subsystem (ADSP recovery, supervised first sensor run, camera probe retries) are kept in that subsystem's file and only named here.",
+  "never_do": [
+   {
+    "title": "Read every flash script for persist, modemst, fsg and fsc before running it",
+    "general": "Before running any vendor, community or distro flash script, read it end to end and confirm it never writes or erases persist, modemst1/2, fsg or fsc. These hold device-unique calibration, keys and modem EFS; reprovisioning needs the manufacturer. Guard your own scripts on serial and product name, and run modem file servers read-only (see firmware_remoteproc.json, rmtfs -r).",
+    "instance": "Pro1-X 2026-10-21/22: the stock F(x)tec v2.1.2 fastbootd script (rewrites xbl, abl, tz, rpm on both slots, modem, system, vendor, product, vbmeta, boot, recovery; does not wipe userdata) and the NixOS flash script (erase dtbo, boot_a, vbmeta_a, userdata) were both checked clean. The upstream tqftpserv package ships a helper that mounts persist; it was removed from the port's RPM (see packaging.json).",
+    "confidence": "confirmed",
+    "date": "2026-10-21",
+    "source": "port log 2026-10-21 13:26 (stock script read), 2026-10-22 21:34; SailfishOS/devices.json fxtec_pro1x_port.install_2026_10_21.stock_package"
+   },
+   {
+    "title": "Do not stop the modem remoteproc as a quick reset",
+    "general": "echo stop > /sys/class/remoteproc/<modem>/state to reset a modem took the whole phone down (black screen, steady red LED, no USB, hard reboot needed). Reset modem state by rebooting, and treat any remoteproc stop as unsafe until it has been tested with the author present.",
+    "instance": "Pro1-X SM6115, Linux 7.3.0-qx1050, SailfishOS 5.1, 2026-10-27: remoteproc0 = modem (MPSS), recovery enabled, after many manual DPM/WDA calls; ssh dropped and the phone rebooted into the default OS of the dual boot.",
+    "confidence": "confirmed",
+    "date": "2026-10-27",
+    "source": "port log 2026-10-27"
+   },
+   {
+    "title": "Have a recovery path before experimenting with boot components",
+    "general": "Before touching the bootloader, boot partitions or anything that runs before userspace, know the recovery path and test it once: a bootloader menu with previous entries, a known-good OS as the default boot, fastboot access, and the key combination that forces download or fastboot mode.",
+    "instance": "Pro1-X: U-Boot extlinux menu (Vol-Down at power-on) with NixOS as default and SailfishOS armed one-shot; Power held about 10 s leaves Qualcomm download mode; Vol-Down + Power enters the bootloader.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://developer.puri.sm/Librem5/index.html (Purism, CC BY-SA 4.0); Pro1-X port log 2026-10-24"
+   }
+  ],
+  "crashes": [
+   {
+    "title": "Early-boot hard crash into download mode leaves no log without ramoops",
+    "general": "A Qualcomm phone can crash so early that nothing reaches the journal and the device sits in download/EDL mode (USB 05c6:900e); a long power press (about 10 s) recovers it. Without a ramoops/pstore reserved-memory node and CONFIG_PSTORE_RAM nothing survives the crash, so add a ramoops node early in any port. Date such a crash by the mtimes of files early boot writes, and do not blame the last userspace change if the crash precedes it.",
+    "instance": "Pro1-X SailfishOS on Linux 7.1, 2026-10-24: first such crash in about ten SailfishOS boots; journal empty after the last clean reboot, only connman settings written; the suspected camera-probe service would have run later, so it is probably innocent (cause unproven). The DT had no ramoops node, CONFIG_PSTORE_RAM=m, qcom_scm download_mode=off.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 13:46 (forensics summary); https://mainlining.dev/ (ramoops in the minimal DT, reported)"
+   },
+   {
+    "title": "Sound server crash on a voice profile switch; debug logging makes journal pulls slow",
+    "general": "A manual switch to the voice call card profile aborted PulseAudio with a channel-count assertion (pa_channels_valid in pa_cvolume_set), a second assertion followed after restart; not reproduced later. PulseAudio log-level=debug through a daemon.conf.d drop-in floods the journal, so a later journalctl over ssh can take minutes. Remove debug drop-ins promptly or log the helper of interest to a file instead.",
+    "instance": "Pro1-X SailfishOS 5.2, PulseAudio 17, 2026-10-27: /etc/pulse/daemon.conf.d/99-debug.conf. The USB link that dropped during the log pull was the author handling the phone during a call test, not the logging.",
+    "confidence": "confirmed",
+    "date": "2026-10-27",
+    "source": "journal assertion lines 2026-10-27; Pro1-X port repo port/packages/qx1050-voicecall/README.md"
+   }
+  ],
+  "copying_and_ownership": [
+   {
+    "title": "Never carry the build host's uid onto the device",
+    "general": "tar extracts keep numeric owners, so files built or packed on the host land owned by a uid with no passwd entry on the device. On sandboxing OSes this breaks far more than the file itself: on SailfishOS firejail's fcopy aborts ('Error fcopy: getpwuid /etc/pulse') for every sandbox that copies that directory, and the only visible symptom is 'application specific booster is not available' for Camera, Browser and others. Unpack with tar --no-same-owner, copy with cp --no-preserve=ownership, pack modules with --owner=0 --group=0, and find offenders with find / -xdev -nouser -o -nogroup. When the port's rootfs sits on another OS's filesystem, restore that OS's original owners for anything you touched there.",
+    "instance": "Pro1-X 2026-10-24: Camera and Browser were down until /etc/pulse ownership was fixed; scripts stage2-device.sh and sfos-kernel-install.sh fixed; NixOS files under /mnt/nixos touched by chown restored.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "SailfishOS/mainline_porting.json camera_jolla_camera.sandbox; Pro1-X port commit 'scripts: never carry the build host's uid onto the device (firejail fcopy)'; port/README.md, port/notes/upstream.md"
+   },
+   {
+    "title": "Do not copy another port's config blindly",
+    "general": "Reference ports may carry the same latent bug or be hybris in exactly the part you look at. Verify each borrowed file against the source code that reads it before trusting it.",
+    "instance": "PinePhone's ngfd ini is not even read as plugin parameters (wrong file name), and its .pa opens with .fail; the victara (Moto X 2014) mainline port is still hybris for audio and sensors.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "Pro1-X port repo port/notes/research/research-vibration.md, research-audio.md, research-sensors-camera.md"
+   },
+   {
+    "title": "pkill -f with a pattern from your own command line kills your own shell",
+    "general": "pkill -f matches the full command line, including the shell that runs pkill, so the ssh session dies (exit 144) and looks like a device crash. Use pgrep and kill by PID, or write the pattern as [x]pattern.",
+    "instance": "Pro1-X 2026-10-25 01:31: pkill -f camorient made the ssh session look like a crash; also met on the Jolla tablet and on the build host.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-25 01:31; SailfishOS/device_access_and_tooling.json boot_evidence.do_not_pkill_your_own_pattern"
+   }
+  ],
+  "power": [
+   {
+    "title": "Check the battery before flashing; a weak USB port does not charge a phone in fastboot",
+    "general": "Check battery voltage and soc-ok with fastboot getvar before flashing firmware partitions. A bootloader with the screen on draws about what a hub port supplies, so it does not charge there, and a phone hanging in a failed boot drains fast. Booting can draw 2-3 A peaks. Use a 2 A source.",
+    "instance": "Pro1-X 2026-10-21: the bootloader sat at 3.52-3.58 V, soc-ok no, for 20 minutes on a 500 mA hub port; a long power + vol-down press gave a blinking red LED; a first SailfishOS flash hung at the logo with a drained battery and booted after charging on a 2 A supply (whether the hang was brownout or the leftover vendor partition was not separated).",
+    "confidence": "inferred",
+    "date": "2026-10-21",
+    "source": "port log 2026-10-21 15:19-16:32; SailfishOS/devices.json fxtec_pro1x_port.install_2026_10_21.battery"
+   },
+   {
+    "title": "Deeply discharged phones only trickle charge while the power button is held",
+    "general": "A phone stored switched off for a long time can discharge so deeply that it charges only briefly while the power button is held. Keeping the power button pressed (a rubber band) while it sits on a charger lets the cell recover until it can boot.",
+    "instance": "Both of moWerk's Pro1-X units, 2026-10-20; the fix is known from the F(x)tec RMA days.",
+    "confidence": "reported",
+    "date": "2026-10-20",
+    "source": "SailfishOS/devices.json fxtec_pro1x_port.deep_discharge (moWerk)"
+   }
+  ]
+ }
+}

@@ -1,0 +1,101 @@
+{
+ "upstreaming": {
+  "note": "Getting a mainline port's changes upstream: authorship and sign-off rules for LLM-assisted work, how kernel and device tree submissions are expected to look, strategy for what to send first, and the current per-patch backlog of the F(x)tec Pro1-X port. Most entries are from the kernel's own process documentation and from experienced mainliners (confidence reported, URL as source; full list in references.json). State as of 2026-10-27: nothing from the Pro1-X port has been sent; the kernel series has no commit messages or Signed-off-by lines yet, new drivers lack DT bindings, and the decision to send stays with the human author.",
+  "policy_and_authorship": [
+   {
+    "title": "A tool never signs off; the human author certifies and owns the patch",
+    "general": "A DCO Signed-off-by is the human author's legal declaration. An LLM or other tool must never add it, neither for the person running it nor for the original author of a patch it reworks. The kernel's policy for coding assistants: only the human submitter certifies the DCO, reviews all generated code, checks licensing, builds warning-free and passes checkpatch before sending, and states known limitations to maintainers. Disclose tool use with an Assisted-by: tag naming the model and any specialised analysis tools (not git or the compiler). Informal chat permission from an original author covers private use, not upstreaming: kernel patches need that author's own Signed-off-by (or their own submission); keep their From: authorship and add Co-developed-by for substantial rework. Ask for a LICENSE file in repositories that have none.",
+    "instance": "Pro1-X: a libcamera sharpness commit got a Signed-off-by for the author from the tool on 2026-10-25 and was corrected at once. The NixOS port of the phone (nyymi609) has no LICENSE and its patches no Signed-off-by lines; its author said 'do whatever you want' in chat (2026-10-22), recorded as a pre-upstreaming item.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "https://docs.kernel.org/process/coding-assistants.html (Linux kernel, GPL-2.0, reported); https://docs.kernel.org/process/submitting-patches.html; port log 2026-10-22 19:08, 2026-10-25 16:02"
+   },
+   {
+    "title": "A general distro carries only mainline drivers",
+    "general": "General distributions (Debian's kernel team explicitly) do not carry out-of-tree drivers, and distros adopt devices whose SoC has solid mainline support. Upstreaming is the entry ticket to distro support; a 'temporary' device fork tends to become permanent unless upstreaming is planned from the start, and forked kernels stop getting security fixes quickly.",
+    "instance": "The Pro1-X series carries about 8k lines of out-of-tree drivers (imx582, s5k4h7, dw9800, aw86224, aw87339, keyboard, q6voice); the PinePhone's near-mainline kernel is a long-lived example of a permanent fork.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://wiki.debian.org/Mobile (Debian, CC BY-SA 4.0); https://fedoraproject.org/wiki/Mobility/SDM845 (Fedora, CC BY-SA 4.0); https://wiki.pine64.org/wiki/PinePhone_Software_Releases; https://momi.ca/posts/2022-09-07-mainline/ (Anjan Momi, CC BY-SA 4.0); https://bootlin.com/pub/conferences/2016/collab-summit/petazzoni-upstreaming-hw-support-in-linux-kernel-why-how.pdf (Thomas Petazzoni, CC BY-SA 3.0)"
+   }
+  ],
+  "kernel_submission": [
+   {
+    "title": "How a kernel series is expected to look",
+    "general": "One logical change per patch, and every patch must build and boot on its own (bisectability). The commit message explains the problem and its user-visible effect in imperative mood and refers to earlier commits by 12+ character hash plus subject. Run scripts/checkpatch.pl, choose recipients with scripts/get_maintainer.pl, send plain-text mail with git send-email or b4, use git format-patch --base. Answer review inline, resend as v2, v3 with a per-version changelog below the --- line, wait about a week before pinging, and never add Reviewed-by or Tested-by tags nobody gave explicitly.",
+    "instance": "None of the Pro1-X kernel commits has a commit message suitable for upstream yet (they come from plain diffs), 2026-10-26.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/process/submitting-patches.html (Linux kernel, GPL-2.0)"
+   },
+   {
+    "title": "Board DTS goes through the platform maintainer and lands early in the cycle",
+    "general": "A phone's board DTS goes to the platform maintainer (qcom for Qualcomm), not to the soc tree directly. File naming follows $soc.dtsi, optional shared dtsi, $soc-$vendor-$board.dts. A new board must add no dtbs_check warnings. Bindings are an ABI: a DT change that would break older kernels needs the driver change first and must say so. Platform maintainers collect patches early in the cycle (around rc1 to rc4); posting during the merge window means waiting a cycle.",
+    "instance": "Pro1-X: the board file sm6115-fxtec-pro1x.dts is already upstream; additions (keyboard, audio, camera, Bluetooth, IPA, Venus board enable, LED polarity) would go to the qcom maintainers.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/process/maintainer-soc.html (Linux kernel, GPL-2.0)"
+   }
+  ],
+  "device_tree_bindings": [
+   {
+    "title": "Bindings first: submission order, schema checks and licensing",
+    "general": "In a series, the binding patch comes first (subject prefix 'dt-bindings: <dir>:'), then the driver, then the DTS. Bindings are YAML json-schema that must pass make dt_binding_check; new binding files are dual-licensed GPL-2.0-only OR BSD-2-Clause. Every compatible used in a DTS, including the board's top-level compatible, must be documented in a binding first. Always Cc devicetree@vger.kernel.org and the DT maintainers. Driver review sometimes waits on binding review, so send bindings early; a board DTS cannot merge until every binding it references is accepted, so track the longest pole.",
+    "instance": "Pro1-X: the camera sensors, lens driver, keyboard controller, haptics and amplifier drivers have no bindings yet; the camera drivers also need v4l2-compliance runs.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/devicetree/bindings/submitting-patches.html (GPL-2.0); https://www.collabora.com/news-and-blog/news-and-events/initial-upstream-support-for-the-rockchip-rk3576.html (Collabora); https://lpc.events/event/19/contributions/2124/"
+   },
+   {
+    "title": "Writing bindings: describe hardware, be specific, constrain everything",
+    "general": "Describe the hardware completely, even parts no driver uses yet, and never encode Linux driver details or configuration choices. Compatibles are specific (SoC- or part-specific), never wildcards or family names; add a fallback only if software can really bind with it (as SM6115 Venus binds via qcom,qcm2290-venus). Reuse common properties and standard node names, vendor-prefix device-specific ones, use standard unit suffixes, and constrain counts, values and order: those constraints are the ABI. Name the file after its compatible (vendor,device.yaml). Bindings for complex blocks take many iterations, so get them right early; coordinate with other OSes that consume the same DT.",
+    "instance": "General guidance for the Pro1-X driver bindings still to be written.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/devicetree/bindings/writing-bindings.html (GPL-2.0); https://www.devicetree.org/specifications/ (devicetree.org); https://asahilinux.org/docs/ (Asahi Linux contributors); https://bootlin.com/pub/conferences/2014/elce/petazzoni-soc-mainlining-lessons-learned/petazzoni-soc-mainlining-lessons-learned.pdf"
+   },
+   {
+    "title": "DTS coding style",
+    "general": "Sort nodes with a unit address by address and others alphabetically; sort &label overrides in a board file alphabetically or in dtsi order. Property order: compatible, reg, ranges, standard properties, vendor properties, then status last after a blank line. Lowercase hex unit addresses without leading zeros, node names with dashes, labels with underscores. The SoC dtsi holds everything on the die (disabled where board-dependent); board-only hardware lives in the board DTS.",
+    "instance": "Applies to the Pro1-X board additions before submission.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://docs.kernel.org/devicetree/bindings/dts-coding-style.html (GPL-2.0)"
+   }
+  ],
+  "strategy": [
+   {
+    "title": "Triage every patch before a handover: origin, status, what is missing, how it was tested",
+    "general": "For a prototype meant to be picked up, write a per-patch map: origin and author, upstream status (already upstream, upstreamable, OS-only workaround, someone else's out-of-tree series), what is missing (bindings, checkpatch, the author's Signed-off-by) and how it was tested. OS-only workarounds belong fixed in userspace instead; out-of-tree series go through their author. Realistic first contributions are small self-contained fixes with a measured reason and board enables for SoC nodes already upstream; new drivers need bindings, review rounds and their original author's sign-off. Keep the fork small and itemised, split into 'upstreamable' and 'never', and publish out-of-tree work as a series with a cover letter that says what still blocks it. Simple drivers (sensors, charger, backlight) go first; GPU, IOMMU and modem take longer, and some parts (undocumented camera sensors, vibrators, panel hacks) may stay in a small fork.",
+    "instance": "Pro1-X kernel/HANDOVER.md (2026-10-26), qx1050-7.3 branch, 16 commits: touch, dsi, audio (WCD9370 + AW87339), camera (IMX582, S5K4H7, DW9800), keyboard (AW9523B), LEDs, haptics (AW86224), Bluetooth, IPA and the Venus board enable are upstreamable; q6voice is Stephan Gerhold's out-of-tree series; the power drivers are questionable (see display_input_power.json); sfos-dt is split (LED polarity upstream, slide inversion and Fn remap SailfishOS-only). None carry commit messages or Signed-off-by (they come from the NixOS port's plain diffs). The VCM soft-ramp fix is a measured small fix.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/kernel/HANDOVER.md; https://connolly.tech/posts/ (Caleb Connolly, reported); https://masneyb.github.io/nexus-5-upstream/ (Brian Masney, reported); https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf (Luca Weiss, reported)"
+   },
+   {
+    "title": "Keep an 'items worth sending upstream' file from the first day",
+    "general": "Record every upstream-worthy defect when it is found (what, where, evidence) in one file per port, with the decision to send left to the human author. It becomes the upstreaming backlog and the handover, and a public per-component status table (pending, needs work, queued, mainline) linked to the patches is the most useful status document for others.",
+    "instance": "Pro1-X notes/upstream.md (ngfd, PulseAudio, mce, Linux, kernel-adaptation-simplified, qtmultimedia, sailjail/firejail, gst-plugins-good, libcamera) and kernel/HANDOVER.md.",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "Pro1-X port repo port/notes/upstream.md, port/kernel/HANDOVER.md; https://masneyb.github.io/nexus-5-upstream/ (reported)"
+   },
+   {
+    "title": "Userspace fixes help every native port and are the low-hanging part",
+    "general": "For a phone OS's native ports, most wins are in shared userspace and reach every port at once; an OS-side package maintainer can take them faster than kernel drivers move. Build on active upstream series rather than writing parallel ones, and turn the work into a backport plus the missing piece plus a real-device test report.",
+    "instance": "Pro1-X list, none sent as of 2026-10-25: ngfd effect list, typo and ENOSPC survival; Jolla PulseAudio picking ed3d4f08; an mce slide-polarity option; the qtmultimedia camerabin fixes; a libcamerasrc caps query handler; gst-plugins-good v4l2-probe; the sailjail Camera permission for /usr/share/libcamera; firejail fcopy naming the file and uid it fails on; the oFono qrtrqmi slot driver and IPA data path (and UIM provisioning in qmimodem sim.c); a build_bootimg 0 switch in kernel-adaptation-simplified; the libcamera soft-ISP AF fixes and sharpness statistic as a reply to RFC series 6276.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/notes/upstream.md, port/kernel/HANDOVER.md, port/patches/ofono/README.md"
+   },
+   {
+    "title": "Post early, review others, respect the maintainers' absorption rate",
+    "general": "Post early: internal polishing is wasted when reviewers change the design anyway. Review other people's patches on the same list to build trust. Never break older hardware that shares a driver. Maintainers absorb a limited amount per cycle, so spread series over cycles and think two releases ahead; mainlining time is hard to estimate because review outcomes dominate the schedule. Work on one SoC compounds for its siblings because IP blocks are shared.",
+    "instance": "General guidance; applies to the Pro1-X series split.",
+    "confidence": "reported",
+    "date": "2026-10-27",
+    "source": "https://bootlin.com/pub/conferences/2014/elce/petazzoni-soc-mainlining-lessons-learned/petazzoni-soc-mainlining-lessons-learned.pdf (Thomas Petazzoni, Bootlin, CC BY-SA 3.0); https://www.collabora.com/news-and-blog/news-and-events/initial-upstream-support-for-the-rockchip-rk3576.html"
+   }
+  ]
+ }
+}

@@ -1,0 +1,183 @@
+{
+ "packaging": {
+  "note": "Building userspace for the target OS on a mainline port: the SDK and its toolchain, packages the OS does not ship, rootfs assembly, the adaptation package layout, and keeping a port's own packages across OS upgrades. Instance: SailfishOS 5.1.0.11 Platform SDK (mb2, scratchbox2) in rootless podman on two hosts, building for the F(x)tec Pro1-X (SM6115). State as of 2026-10-27: every port package (qrtr trio, oFono 2.12 with patches, PulseAudio, qtmultimedia, gst-plugins-good, libcamera 0.7.2 with AF, protobuf-c, libssc, hexagonrpc, sensorfw adaptors, voice-call helper) builds on the 5.1 target and runs on 5.2.0.22; the rootfs is still assembled by scripts rather than mic and a kickstart, and no OBS project exists for the port yet.",
+  "sdk": [
+   {
+    "title": "The SailfishOS Platform SDK runs in rootless podman",
+    "general": "Jolla's SDK officially supports only Docker and VirtualBox, but the chroot Platform SDK runs in a rootless podman container: import the Platform SDK tarball as an image, install the tooling and target with sdk-assistant as an unprivileged build user, and build with mb2 -t <target> build, which installs BuildRequires from the release repos by itself (needs network). The SDK target alone has rpmbuild and qmake but no compiler: the toolchain lives in the x86 tooling entered through scratchbox2, so build through the Platform SDK. Keep the image store off the home directory with --root/--runroot. Copy source trees in with tar over podman exec and RPMs out with podman cp. A second host needs no published port when driven by podman exec (a Qt Creator build engine would use port 2222). Builds made on an older target run fine on the next release when no SDK target for it exists yet.",
+    "instance": "2026-10-04: mce 1.116.5 with a one-function patch built for aarch64 in 49 s with mb2 -t SailfishOS-5.1.0.11-aarch64 build in rootless podman 6.0.2; the display.so ran on a Jolla C2. Sources: releases.sailfishos.org Jolla-latest-SailfishOS_Platform_SDK_Chroot-i486.tar.bz2 (287 MB, itself 5.1.0.11, no checksum published) and sdk/targets Sailfish_OS-5.1.0.11-Sailfish_SDK_Tooling-i486.tar.7z (477 MB) and ...-Sailfish_SDK_Target-aarch64.tar.7z (196 MB), md5sums verified. sdk-assistant tooling create 42 s, target create 26 s. 5.8 GB on disk after cleanup. Container started with sleep infinity; tooling and target live in its own layer. a second build host, 2026-10-24: patched qt5-qtmultimedia (13 RPMs) in 3 min 56 s against about 15 min on the older host, container in build.slice (12 threads, 12 GB). No 5.2 SDK target on the 5.2.0.22 release day; packages built on 5.1 run on 5.2.",
+    "confidence": "confirmed",
+    "date": "2026-10-04",
+    "source": "SailfishOS/sdk_on_rootless_podman.json result, layout, sources_from_jolla, commands; Pro1-X port repo port/notes/sensors-design.md, port/notes/sfos-5.2-upgrade.md"
+   },
+   {
+    "title": "Rootless user namespaces: out-of-range owners, high gids and device nodes",
+    "general": "Rootless podman maps only the subordinate id range (typically 65536 ids), so SDK archives that contain files owned by uid/gid 500000 or device nodes fail to import or unpack ('potentially insufficient UIDs or GIDs', 'Cannot change ownership to uid 500000', 'Cannot mknod: Operation not permitted'). Stream-repack the archives with those owners set to 0 and the device nodes dropped (keep the .meta file, sdk-manage reads release and tooling from it) instead of widening /etc/subuid. The image's login.defs starts new groups at gid 100000, outside the mapped range, so su to a new user fails with 'cannot set groups: Invalid argument': create the build user with explicit ids (groupadd -g 1000 mersdk; useradd -m -u 1000 -g 1000 mersdk) and passwordless sudo; sdk-assistant refuses to run as root.",
+    "instance": "SailfishOS 5.1.0.11 Platform SDK: five files owned by appsupport-root (500000); seven device nodes (/dev/null, zero, ptmx, random, full, tty, urandom) in the tooling archive; repack scripts sfos-sdk-tar-squash-ids.py (pipes into podman import -) and sfos-sdk-repack-7z.sh.",
+    "confidence": "confirmed",
+    "date": "2026-10-04",
+    "source": "SailfishOS/sdk_on_rootless_podman.json friction_and_fixes"
+   },
+   {
+    "title": "Tell the SDK it runs in docker; do not bind-mount sources",
+    "general": "sdk-manage has code paths for systemd-detect-virt == docker that skip mount steps; under podman detect-virt reports something else. Start the container with --env container=docker and touch /.dockerenv so it reports docker (whether builds also work without it was not tested). A bind-mounted source tree is not writable by the container's build user, because that uid is a subuid on the host; --userns=keep-id would re-own the whole image (time and several GB), so copy trees in and out instead.",
+    "instance": "Container sfos-sdk-setup (image sfos-platform-sdk:base), 2026-10-04; same setup on a second build host 2026-10-24 with no new friction.",
+    "confidence": "confirmed",
+    "date": "2026-10-04",
+    "source": "SailfishOS/sdk_on_rootless_podman.json friction_and_fixes, <build-host>.setup"
+   },
+   {
+    "title": "SDK kernel headers are 4.4: vendor newer UAPI headers or add compat code",
+    "general": "Packages needing newer kernel UAPI fail in the SailfishOS SDK because its kernel headers (linux-glibc-devel) are from Linux 4.4 and cannot be upgraded in the target. Ship the needed UAPI header inside the package (with its licence, GPL-2.0 WITH Linux-syscall-note) or add a compat patch. Install packages that provide headers for others (qrtr) into the SDK target before building their dependants.",
+    "instance": "qrtr: missing linux/qrtr.h, bundled and installed to %{_includedir}/linux, then qrtr installed into the sb2 target and rmtfs and tqftpserv built (2026-10-23). hexagonrpc: misc/fastrpc.h from Linux v6.18 vendored. libcamera 0.7.2: 0001-process-pidfd-clone3-compat-for-4.4-headers.patch (CLONE_PIDFD, clone_args, P_PIDFD, SYS_pidfd_open).",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "port log 2026-10-23 10:31-10:35 (mb2 builds); Pro1-X port repo port/notes/sensors-design.md, port/packages/libcamera-qx1050/README.md"
+   },
+   {
+    "title": "Install extra build dependencies into the SDK target with sb2; sb2 has its own /tmp",
+    "general": "Build dependencies missing from the target repos (including your own packages, which mb2 cannot fetch) are installed with sb2 -t <target> -m sdk-install -R zypper in ... or ... -R rpm -Uvh <rpm>. Copy the RPMs into the build user's home, not /tmp: the sb2 shell has its own /tmp. Extra repos can be added to the target with zypper mr -G when their repomd is unsigned.",
+    "instance": "SailfishOS-5.1.0.11-aarch64 target, 2026-10-26: ell/ell-devel 0.70 from the dontbeevil OBS repo (repo.sailfishos.org/obs/nemo:/devel:/hw:/pine:/dontbeevil/sailfish_latest_aarch64) for the oFono 2.12 rebuild; own libssc and protobuf-c devel RPMs for the sensorfw adaptors; native-common added to the target for libcamera.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "port log 2026-10-26 21:25-21:28; SailfishOS/sdk_on_rootless_podman.json <build-host>.target_extras"
+   },
+   {
+    "title": "SDK caveats seen so far",
+    "general": "mb2 output is not stripped (functionally equal, larger). sdk-assistant target create may print 'mkdir: missing operand' and 'sb2-config: line 17: /CONFIG-LOG: Permission denied' while the target still works. Not tried with this setup: sfdk, the emulator, Qt Creator, i486 or armv7hl targets, a Qt/QML app build; podman-docker and the user podman.socket were not needed.",
+    "instance": "mce display.so 517 kB from mb2 against 204 kB from Jolla's build service, 2026-10-04.",
+    "confidence": "confirmed",
+    "date": "2026-10-04",
+    "source": "SailfishOS/sdk_on_rootless_podman.json caveats"
+   }
+  ],
+  "building_packages": [
+   {
+    "title": "mb2 builds the tree as it is: spec Patch lines are not applied",
+    "general": "The Platform SDK's mb2 build (as used here) skips %prep and builds the source directory exactly as it is, so Patch: lines in the spec are silently not built. Apply every patch in the tree (patch -p1) and keep the spec list in step for a later OBS build. The symptom is a green build without the patched code: grep the build log for the expected source files being compiled. For packages with an upstream/ subdirectory use %autosetup -p1 -n %{name}-%{version}/upstream so relative src/ paths in %install still work.",
+    "instance": "libcamera-qx1050 0.7.2-3, 2026-10-25: af.cpp and libipa/af.cpp never compiled on the first build, and the tuning file's 'Af:' entry then failed the IPA load; the same handling was later used for libssc, hexagonrpc and oFono 2.12 (rpm/*.patch pre-applied in upstream/).",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "build.log of libcamera-qx1050 0.7.2-3; Pro1-X port repo port/notes/external-packages.md, port/patches/ofono/README.md, port/packages/libcamera-qx1050/README.md"
+   },
+   {
+    "title": "RPM version segments compare numerically: date stamps must not be shorter",
+    "general": "rpm compares numeric version segments as numbers, so a local rebuild versioned 5.6.2+v4l.20261024 sorts below an installed 5.6.2+v4l.20230905210651. Use the same stamp width (20261024000000) or a higher release, or the install needs --oldpackage and the next dist-upgrade downgrades you.",
+    "instance": "qt5-qtmultimedia rebuild on the Pro1-X, 2026-10-24: first install needed rpm -Uvh --oldpackage; now 5.6.2+v4l.20261024000000.qx1050-10.",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "Pro1-X port repo port/notes/external-packages.md"
+   },
+   {
+    "title": "Replace a set of system subpackages together, then restart what keeps them mapped",
+    "general": "When installing rebuilt subpackages of a core library, select exactly the installed subpackages by version string (some names do not share the prefix), upgrade them in one rpm -U, then restart prestarted processes, which keep the old libraries mapped. /proc/<pid>/maps shows which libraries (or '(deleted)' ones) a running app uses.",
+    "instance": "qt5-qtmultimedia releases 7-10 on the Pro1-X, 2026-10-24/25: seven installed packages including qt5-qtdeclarative-import-multimedia; no change was visible until the jolla-camera boosters were restarted (userspace_sailfishos.json).",
+    "confidence": "confirmed",
+    "date": "2026-10-25",
+    "source": "port log 2026-10-24 20:30, 2026-10-25 01:49, 11:57, 13:38"
+   },
+   {
+    "title": "Building libcamera 0.7.x in the SailfishOS SDK",
+    "general": "Needed to build libcamera 0.7.2 with mb2 on the 5.1 target: (1) the native-common repo in the target and explicit installs of pkgconfig(libevent) and pkgconfig(libv4l2), which mb2's BuildRequires resolution missed; (2) -Dpipelines=simple,uvcvideo -Dipas=simple (drops the libyuv subproject that needs network); (3) -Dlibunwind=disabled -Dlibdw=disabled; (4) -Dcam-output-sdl2=disabled, and qcam, lc-compliance and tests off; (5) the clone3/pidfd compat patch for 4.4 headers; (6) the upstream/ subdirectory flattened or addressed via %autosetup so mb2's in-tree build finds meson.build. libcamera builds with -Werror: signed/unsigned comparisons (Rectangle::y is int) fail the package, so compile-test patches with the same flags first.",
+    "instance": "Six spec rounds on 2026-10-24; packaging in port/packages/libcamera-qx1050 (from the native-common spec, mlehtima/libcamera); the 0.7.2-3 sharpness patch failed once on an inSharpnessWindow comparison (2026-10-25).",
+    "confidence": "confirmed",
+    "date": "2026-10-24",
+    "source": "port log 2026-10-24 17:20, 2026-10-25; Pro1-X port repo port/packages/libcamera-qx1050/README.md, port/notes/external-packages.md"
+   },
+   {
+    "title": "Packaging the SSC sensor stack: protobuf-c, libssc, hexagonrpc",
+    "general": "Qualcomm SSC sensors on a mainline SailfishOS port need packages the OS does not ship: protobuf-c (install protobuf-compiler and protobuf-devel into the target first), libssc (codeberg DylanVanAssche/libssc; disable subdir('mocking') and the tests, whose mock SSC server needs python3-embed) and hexagonrpc (linux-msm/hexagonrpc PR 27 plus a sensor-registry patch, with the fastrpc UAPI header vendored and the upstream systemd units replaced). libqmi-devel and libqrtr-glib-devel are available in the target repos.",
+    "instance": "SailfishOS 5.1.0.11 target, 2026-10-26: protobuf-c 1.5.2 (built first try against Jolla's protobuf 25.1), libssc 0.4.4, hexagonrpc PR 27 + hexagonrpc-sns-registry.patch from the NixOS port; all three mb2 builds green.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "mb2 build logs 2026-10-26; Pro1-X port repo port/notes/sensors-design.md"
+   },
+   {
+    "title": "Strip upstream helpers that touch persist-type partitions",
+    "general": "Read every unit and helper an upstream service ships; some mount or write persist-type partitions. Remove them in the spec (rm in %install).",
+    "instance": "tqftpserv upstream ships populate-readwrite.sh and tqftpserv-populate-readwrite.service, which mount persist; removed from the port's RPM, 2026-10-23.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "spec edits 2026-10-23 10:34-10:35"
+   },
+   {
+    "title": "Where oFono 2.x for SailfishOS is packaged",
+    "general": "sailfish-on-dontbeevil/ofono is the old 1.21 tree; the 2.x packaging (upstream submodule plus rpm/ patches including 0008 slot manager, 0010 'Add slot support to the gobi plugin', 0017 'hack slot remove support') is sailfishos-native/ofono. Rebase device patches onto the exact commit the running binary was built from, so the only delta to the running build is your change.",
+    "instance": "The oFono 2.12.0+git1 RPM on the dontbeevil OBS was built from sailfishos-native commit 4c79652; the Pro1-X patches 0019 and 0020 sit on it (2026-10-26).",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "git log of both repos; OBS directory listing 2026-10-26"
+   },
+   {
+    "title": "OBS directory listings need a browser User-Agent",
+    "general": "repo.sailfishos.org OBS directory listings refuse plain clients; send a browser User-Agent. Files themselves download plainly.",
+    "instance": "nemo:devel:hw:pine:dontbeevil and native-common sailfish_latest_aarch64, 2026-10.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/notes/external-packages.md"
+   }
+  ],
+  "rootfs": [
+   {
+    "title": "Assemble a SailfishOS rootfs with zypper --root in an aarch64 SDK-target image",
+    "general": "Without mic and a kickstart, a working rootfs can be assembled by importing the SDK target as an arm64 container image (ids squashed, device nodes dropped) and running zypper --root against the public release repos plus the native middleware repo. Stage 1 installs patterns and the native GPU/Qt pieces; stage 2 re-installs packages whose scriptlets failed before /bin/sh existed (or under qemu) and does what a kickstart %post does: set the rpm platform (aarch64-meego-linux), rpm --rebuilddb, remove /.bootstrap, oneshot --mic for root and the device user, ssu release and ssu mode 4; then kernel modules, firmware, sparse files, port RPMs and bring-up access; then tar --numeric-owner --xattrs. Map each stage to a .ks section for the release form.",
+    "instance": "SailfishOS 5.1.0.11 aarch64, 2026-10-23: repos releases.jolla.com 5.1.0.11 (jolla, hotfixes, adaptation-common, apps) + native-common sailfish_latest_aarch64; patterns including patterns-sailfish-ui; 622 packages, 1.1 GB, about 15-20 minutes under qemu; glibc-common and libselinux scriptlets failed under qemu and were redone in stage 2; delivered as a 1.36 GB tarball. Scripts repos.sh, stage1-base.sh, stage2-device.sh (%post text from the nabu and PinePhone kickstarts).",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "port log 2026-10-23 10:24-10:43; Pro1-X port repo port/scripts/repos.sh, port/scripts/stage1-base.sh, port/scripts/stage2-device.sh"
+   },
+   {
+    "title": "Re-apply file capabilities after unpacking a rootfs tarball",
+    "general": "File capabilities (security.capability xattrs) set in a rootless user namespace do not survive, and plain tar round trips lose them. Run rpm --setcaps -a inside the chroot after unpacking, with the target distro's PATH first (rpm runs sh inside the chroot). Ownership and setuid bits do come through when the archive is root-owned.",
+    "instance": "Pro1-X 2026-10-23: rpm --setcaps first failed from NixOS sudo because the chroot inherited the NixOS PATH; PATH=/usr/sbin:/usr/bin:/sbin:/bin:$PATH chroot ... rpm --setcaps -a returned 0 (install-on-nixos.sh).",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "port log 2026-10-23 10:48-11:00; Pro1-X port repo port/scripts/install-on-nixos.sh"
+   }
+  ],
+  "adaptation_packages": [
+   {
+    "title": "Native SailfishOS adaptation layout: droid-config, droid-hal-version, kernel-adaptation",
+    "general": "A native SailfishOS port mirrors the hybris layout: droid-config-<dev> (droid-configs.inc with native_build 1 and community_adaptation 1, delete_file.list removing the hybris init pieces, patterns, sparse files), droid-hal-version-<dev> (generates hw-release), kernel-adaptation-<dev>, a firmware RPM, the qrtr trio, and a CI repo with a hand-maintained kickstart for mic that produces a rootfs tarball and a flash script. The template is sailfish-on-dontbeevil/droid-config-pinephone plus piggz/droid-hal-configs branch native.",
+    "instance": "Recommended layout for qx1050, 2026-10-23; OBS project nemo:devel:hw:fxtec:qx1050 exists but is empty; piggz's halium-qx1050 (Halium 4.19) is a parallel hybris port of the same device.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "SailfishOS/mainline_porting.json method.template_port; Pro1-X port repo port/notes/research/research-packaging.md"
+   },
+   {
+    "title": "hw-release and the ssu board mapping are generated, never shipped as sparse files",
+    "general": "/etc/hw-release, /usr/lib/hw-release and the ssu board mapping are generated by droid-hal-version-<device> and droid-configs.inc. A bring-up tree may carry copies to make ssu report the model, but a package must not.",
+    "instance": "Pro1-X 2026-10-23: shipping hw-release and board-mappings.d/05-fxtec-qx1050.ini in sparse made ssu model report qx1050 during bring-up.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "SailfishOS/mainline_porting.json method.generated_not_shipped; port log 2026-10-23 12:47, 19:17"
+   },
+   {
+    "title": "kernel-adaptation-simplified has no switch for U-Boot devices",
+    "general": "Native SailfishOS ports package the kernel as kernel-adaptation-<device> (a spec of about 15 macros including kernel-adaptation-simplified.inc, linux/ submodule, defconfig, patches/ with apply_patches 1, devicetrees, crossbuild aarch64). The current HEAD of the inc runs mkbootimg unconditionally (Provides droid-hal-img-boot etc.), so U-Boot/extlinux devices either vendor the 2020-era 145-line inc (as kernel-adaptation-pine64 does: Image, dtbs and modules into /boot and /lib/modules) or add the Provides by hand. mer-hybris droid-hal-version still BuildRequires droid-hal-img-boot/recovery even with native_build; the dontbeevil fork comments them out. Check both before adopting the templates.",
+    "instance": "Research 2026-10-23 (HelloVolla/VerdandiTeam inc, a 2026-10-13 dtc removal); upstream item: a build_bootimg 0 switch.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "Pro1-X port repo port/notes/research/research-packaging.md, port/notes/upstream.md"
+   },
+   {
+    "title": "Packages a native Qualcomm SailfishOS port takes from outside Jolla",
+    "general": "Expect to replace or add: PulseAudio with the UCM fix, oFono 2.x and ell (dontbeevil OBS), libqmi, libqrtr-glib, mesa and qtwayland (native-common), a newer libcamera, patched qtmultimedia, gst-plugins-good built with v4l2-probe, qrtr/rmtfs/tqftpserv, protobuf-c/libssc/hexagonrpc, and to remove the hybris video texture backend and qt5-feedback-haptics-ffmemless.",
+    "instance": "Pro1-X notes/external-packages.md table with exact NVRs as of 2026-10-26.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/notes/external-packages.md, port/README.md"
+   }
+  ],
+  "upgrades": [
+   {
+    "title": "In-place OS upgrade on a port: snapshot, lock everything the port built, read the dry run",
+    "general": "Before a distribution upgrade, lock every package that is not the vendor's own build: the vendor's packages of the same names (modem stack, sound server, multimedia, GPU stack) are built for other hardware and a dist-upgrade swaps or downgrades them. On SailfishOS filter rpm -qa by release tag not containing 'jolla', not by vendor (Jolla packages say meego), and add wildcards for families (ofono*, pulseaudio*, qt5-qtmultimedia*, mesa-*, libcamera*, libqmi*, libssc*). Snapshot the rootfs first (cp -a suffices when getcap -r finds no file capabilities), install zypper (pkcon install zypper), switch the release (ssu re <version>), run the dry run detached with systemd-run and read every downgrade and removal, then download-only, then the dup with --replacefiles. zypper rc 107 means scriptlet warnings; read the log. Afterwards remove /etc/ssu/ssu.ini.rpmnew and check failed units.",
+    "instance": "Pro1-X SailfishOS 5.1.0.11 to 5.2.0.22 on 7.3.0-qx1050, 2026-10-27: 3.0 GB snapshot rootfs-5.1.0.11; 33 locks (oFono 2.12, mesa, PulseAudio, camera stack, qmi/qrtr); 574 upgrades, 7 new, 0 removals; 16 'downgrades' were only Jolla rebuilds with a lower OBS release counter; about 25 minutes; rc 107 from an old %postun, harmless. First boot: lipstick, PulseAudio, oFono and mobile data came up unchanged; policies-setup failed as before; Benchymark 2.2.0 ran. The dup reinstalled the hybris video texture backend as a new package, so remove it again.",
+    "confidence": "confirmed",
+    "date": "2026-10-27",
+    "source": "dup logs 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+   }
+  ]
+ }
+}

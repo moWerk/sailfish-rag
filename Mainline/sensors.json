@@ -1,0 +1,49 @@
+{
+ "sensors": {
+  "note": "Sensors behind a DSP: the Qualcomm Snapdragon Sensor Core (SSC) on the ADSP, reached through FastRPC (hexagonrpcd) and QMI over QRTR (libssc). Instance: F(x)tec Pro1-X (SM6115), where accelerometer, gyroscope, magnetometer, light and proximity all live on the ADSP and the only IIO devices are PMIC ADCs. The NixOS port of the same phone runs hexagonrpcd (an unmerged fork) with iio-sensor-proxy and libssc. State as of 2026-10-27: the SSC service is announced by the ADSP; protobuf-c, libssc, hexagonrpc and a set of SailfishOS sensorfw adaptors are built and packaged, and the hexagonfs data and units are installed but disabled; nothing has been run against the ADSP on SailfishOS yet. The sensorfw adaptor design is in userspace_sailfishos.json.",
+  "ssc": [
+   {
+    "title": "Qualcomm SSC sensors have no IIO devices; userspace reaches them over FastRPC and QMI",
+    "general": "On SoCs with the Snapdragon Sensor Core the motion, light and proximity sensors live on the ADSP; the kernel exposes no IIO device for them. Userspace needs hexagonrpcd, which serves the sensor registry and config files to the DSP over FastRPC, plus a QMI/protobuf client (libssc) used in-process by the sensor framework; libssc creates no kernel device. A framework that only consumes IIO or iio-sensor-proxy's D-Bus cannot see raw accelerometer or gyroscope data, so it needs its own libssc adaptor.",
+    "instance": "Pro1-X SM6115: NixOS uses the hexagonrpcd PR 27 fork + libssc 0.4.4 + iio-sensor-proxy 3.9 with its drv-ssc backend (accel and proximity marked experimental upstream); net.hadess.SensorProxy carries no raw accel/gyro. On SailfishOS without adaptors, auto-brightness, proximity and rotation are absent.",
+    "confidence": "confirmed",
+    "date": "2026-10-23",
+    "source": "SailfishOS/mainline_porting.json sensors_camera.ssc; Pro1-X port repo port/notes/sensors-design.md, port/notes/research/research-sensors-camera.md"
+   },
+   {
+    "title": "The ADSP announces the SSC QMI service before hexagonrpcd runs",
+    "general": "The ADSP announces the Snapdragon Sensor Core QMI service (QRTR service 400) on its node without the hexagonrpcd sensor daemon running; check with qrtr-lookup. Whether it returns readings before hexagonrpcd has served the sensor registry was not tested.",
+    "instance": "Pro1-X SailfishOS on Linux 7.1, 2026-10-26: service 400 on node 5.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "qrtr-lookup output 2026-10-26; Pro1-X port repo port/notes/sensors-design.md"
+   },
+   {
+    "title": "hexagonrpcd needs an unmerged fork with write support and the sensor registry interface",
+    "general": "Stock hexagonrpcd (0.4.0 as in Alpine) cannot write files, but the ADSP sensor registry needs writes: use linux-msm/hexagonrpc PR 27 (closed unmerged 2026-09-21) plus a sns_registry patch. Its upstream systemd units install to lib64/systemd and lack -R, so replace them.",
+    "instance": "Pro1-X: hexagonrpc 0.5.0+git40e5041 RPM with hexagonrpc-sns-registry.patch from the NixOS port (packaging in packaging.json).",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port repo port/notes/sensors-design.md, port/notes/research/research-sensors-camera.md"
+   },
+   {
+    "title": "The hexagonfs tree: layout, writable registry and platform properties",
+    "general": "hexagonrpcd -R serves a tree mirroring Android paths: acdb, dsp, sensors/config (from vendor/etc/sensors/config), sensors/registry (from persist), sensors/sns_reg.conf, and socinfo pointing at /sys/devices/soc0. Reuse the tree a working distro already uses rather than collecting it. The ADSP rewrites the registry, so serve a writable copy seeded from the packaged one and re-seed only when the package changes. Provide platform properties by name (hw_platform=QRD selects the bengal_qrd_* configs on SM6115), wait for /dev/fastrpc-adsp (it can register up to about 240 s late), and give the daemon access to it through udev. Install the data with a prepare script and a systemd unit, left disabled until a supervised first run.",
+    "instance": "Pro1-X droid-config sparse: usr/share/qx1050/hexagonfs (data from the NixOS port; default placement and calibration, a per-unit dump may be wanted), qx1050-hexagonrpcd-prepare.sh (port of the NixOS ExecStartPre, md5 stamp), qx1050-hexagonrpcd.service disabled, 2026-10-26.",
+    "confidence": "confirmed",
+    "date": "2026-10-26",
+    "source": "Pro1-X port commit 5e43769; port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-hexagonrpcd-prepare.sh, port/packages/hexagonrpc/upstream/README.md"
+   }
+  ],
+  "first_run": [
+   {
+    "title": "Supervise the first run of anything that talks to the sensor DSP",
+    "general": "If the ADSP sensor protection domain crashes, everything else on the ADSP (audio on Qualcomm phones) is gone until reboot, a hang needs a long power press, and on a one-shot dual boot the crash reboot lands in the other OS. So the first runs are manual with someone present: re-arm the fallback boot first, decide the ADSP recovery setting (firmware_remoteproc.json), follow the journal and remoteproc dmesg, start the unit, and probe each sensor with a CLI (ssccli --sensor light / proximity / accelerometer, --timeout 10). Enable the unit only after several clean manual boots, and limit restarts: a dead ADSP is not fixed by restarting the daemon.",
+    "instance": "Pro1-X (audio and SSC both on the ADSP): qx1050-hexagonrpcd.service not enabled, StartLimitBurst=3; never run on hardware under SailfishOS as of 2026-10-27. The crash consequences are reasoned, not observed.",
+    "confidence": "inferred",
+    "date": "2026-10-27",
+    "source": "Pro1-X port repo port/notes/sensors-design.md, port/droid-config-qx1050/sparse/etc/systemd/system/qx1050-hexagonrpcd.service"
+   }
+  ]
+ }
+}

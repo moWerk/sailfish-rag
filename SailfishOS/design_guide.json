@@ -1,0 +1,481 @@
+{
+ "design_guide": {
+  "note": "The Sailfish OS design and UX specification, distilled from Jolla's own design and developer documentation plus one credited community guide, so a session can retrieve it instead of guessing. Its purpose is the refactoring case: a developer arrives with a UI that works but does not belong on the platform, and a session reads this to turn it into a Sailfish citizen. Written 2026-10-26 by another session in the same corpus at moWerk's request because the session that owns this corpus was on other work. Nothing here was measured on a device: every entry is vendor_doc or community_doc, except porting_replacements and refactor_checklist, which are this corpus's own synthesis and labelled inferred. The owning session holds the hardware and the verification.",
+  "attribution_rule": "Every entry names who it came from, per ATTRIBUTION.md principle 1. The Jolla material is Jolla's: the design pages, the Silica reference, the icon story and template, the docs.sailfishos.org pages and the 2015 design blog post by Martin Schüle. The community entry is Michal Szczepaniak's on the VerdandiTeam blog. Text here is written in this corpus's own words; API, property and icon names are facts and are kept verbatim.",
+  "licence_position": "This matters for anything public built from this file. The docs.sailfishos.org content is CC BY-NC-SA 4.0, from LICENSE-documentation.txt in github.com/sailfishos/docs.sailfishos.org; the MIT licence GitHub reports for that repository covers the Jekyll theme, not the documentation. The sailfishos.org design and Silica pages state no licence at all, only 'Jolla Mobile Ltd (c) 2025'. The icon template archive is CC BY 3.0. The community post states no licence. So a public document derived from this file should carry attribution to Jolla and to the named community author, and should state facts in its own words. This corpus reproduces none of Jolla's prose and none of its code blocks. What it does carry is a handful of one-line API idioms, such as the ternary binding a label colour to a list item's highlighted property, because there is no other way to state an API, and one D-Bus call described rather than quoted. The NonCommercial and ShareAlike terms on the documentation portion are a decision for moWerk before anything is published.",
+  "sources": {
+   "design_principles_page": {
+    "url": "https://sailfishos.org/design/design-principles/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated, page footer reads only 'Jolla Mobile Ltd (c) 2025'",
+    "fetched": "2026-10-26"
+   },
+   "ux_framework_page": {
+    "url": "https://sailfishos.org/design/ux-framework/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26"
+   },
+   "gestures_page": {
+    "url": "https://sailfishos.org/design/gestures/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26",
+    "note": "carries a 'Page history' line: '1st version - Sailfish OS 1.0, obsolete after moving on to Sailfish OS 2.0'"
+   },
+   "navigation_page": {
+    "url": "https://sailfishos.org/design/navigation/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26"
+   },
+   "app_icons_page": {
+    "url": "https://sailfishos.org/design/icons/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "landing page only; it links the icon story PDF and the template zip",
+    "fetched": "2026-10-26"
+   },
+   "icon_story_pdf": {
+    "url": "https://sailfishos.org/content/uploads/2018/11/48_SAILFISH-APPS-ICON-STORY.pdf",
+    "holder": "Jolla",
+    "licence": "no licence on the document itself; the template set it belongs to is CC BY 3.0",
+    "fetched": "2026-10-26",
+    "note": "13 pages, mostly illustration. The text carries the shape derivation and the size rule."
+   },
+   "icon_template_zip": {
+    "url": "https://sailfishos.org/content/uploads/files/Sailfish-Apps-icon-template.zip",
+    "holder": "Jolla",
+    "licence": "CC BY 3.0, stated in the two readme.txt files inside the archive: 'You are not required to provide attribution to us, as you making cool apps is enough for us.'",
+    "fetched": "2026-10-26",
+    "note": "9.6 MB, 307 entries: 33 launcher icons as svg, png, ai and psd, plus an icon-launcher-template in ai, psd, pdf and png. Trademark note in the readme: Jolla and Sailfish are trademarks of Jolla Ltd."
+   },
+   "icon_reference_page": {
+    "url": "https://sailfishos.org/develop/docs/jolla-ambient/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26",
+    "note": "titled 'Sailfish Icon Reference'. It is the index of system theme icons; the names extracted from it are in system_icons.json."
+   },
+   "silica_pitfalls_page": {
+    "url": "https://sailfishos.org/develop/docs/silica/sailfish-application-pitfalls.html/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26"
+   },
+   "silica_theme_page": {
+    "url": "https://sailfishos.org/develop/docs/silica/qml-sailfishsilica-sailfish-silica-theme.html/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26",
+    "note": "the 'Silica 1.0' on the page is the QML import version, taken from the line 'import Sailfish.Silica 1.0', not a version of the documentation. That import is what every app writes; the module package measured on a C2 at 5.1.0.11 is Silica 1.2.154, which is a package version and not comparable."
+   },
+   "silica_component_index": {
+    "url": "https://sailfishos.org/develop/docs/silica/sailfish-silica-all.html/",
+    "holder": "Jolla Mobile Ltd",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26"
+   },
+   "jolla_design_blog_2015": {
+    "url": "https://blog.jolla.com/design-insights-sailfish-os/",
+    "holder": "Jolla",
+    "author": "Martin Schüle, Chief Designer of Jolla",
+    "date": "2015-04-13",
+    "licence": "no licence stated",
+    "fetched": "2026-10-26",
+    "note": "DATED. Written for the Sailfish OS 2.0 transition and the Jolla Tablet. Its philosophy holds; several concrete behaviours it describes are 2015 state, see dated_claims_to_recheck."
+   },
+   "docs_ui_reference": {
+    "url": "https://docs.sailfishos.org/Develop/Apps/UI/",
+    "source_of_truth": "github.com/sailfishos/docs.sailfishos.org, Develop/Apps/UI/README.md, repository head 1090f67fe3f1 of 2026-10-20",
+    "holder": "Jolla",
+    "licence": "the repository carries LICENSE-documentation.txt = CC BY-NC-SA 4.0 for the documentation, and LICENSE.txt = MIT for the Jekyll theme (Patrick Marsceill). GitHub's own detector reports only the MIT one, which is the theme.",
+    "fetched": "2026-10-26",
+    "note": "the rendered page is client-side and extracts as almost nothing; read the markdown in the repository instead."
+   },
+   "docs_definition_of_done": {
+    "url": "https://docs.sailfishos.org/Develop/Apps/UI/Definition_of_Done/",
+    "source_of_truth": "github.com/sailfishos/docs.sailfishos.org, Develop/Apps/UI/Definition_of_Done/README.md, head 1090f67fe3f1",
+    "holder": "Jolla",
+    "licence": "CC BY-NC-SA 4.0, see docs_ui_reference",
+    "fetched": "2026-10-26"
+   },
+   "docs_ambience": {
+    "url": "https://docs.sailfishos.org/Develop/Ambience/",
+    "source_of_truth": "github.com/sailfishos/docs.sailfishos.org, Develop/Ambience/README.md, head 1090f67fe3f1",
+    "holder": "Jolla",
+    "licence": "CC BY-NC-SA 4.0, see docs_ui_reference",
+    "fetched": "2026-10-26"
+   },
+   "verdandi_app_design_post": {
+    "url": "https://blog.verdanditeam.com/designing-sailfishos-applications",
+    "holder": "VerdandiTeam blog",
+    "author": "Michal Szczepaniak, from the page's author meta tag; no date is stated on the page",
+    "licence": "none stated, footer reads 'Copyright 2026'. Treated as all rights reserved: paraphrased here, never quoted at length.",
+    "fetched": "2026-10-26",
+    "note": "community guidance, not a Jolla document. Kept in its own entry so the two voices do not merge."
+   }
+  },
+  "design_principles": {
+   "attribution": "Jolla, design principles page and the same text in the docs UI reference",
+   "effortless_interaction": "Core interaction is gesture based and supported by visual, tactile and audio feedback, so the user works the whole screen instead of aiming at small buttons. A side effect Jolla names explicitly: a gesture can reveal content while it runs.",
+   "true_multitasking": "Several apps stay live at once and the user moves between them. An app is expected to keep doing useful work after it leaves the foreground, which is why the cover matters.",
+   "reflect_your_ambience": "The user's chosen ambience is part of the product. An app takes its colours from the ambience rather than imposing its own.",
+   "all_screen_estate_is_yours": "The chrome the system reserves is kept to a minimum and the content gets the screen.",
+   "simply_beautiful": "Simple, uncluttered, legible, with animation, haptics and sound following one theme. Jolla's stated visual metaphor is glass and shining light.",
+   "logical": "The same interaction and the same visuals for the same kind of task, so a flow learned in one place transfers.",
+   "magical": "A deliberate positive surprise rather than difference for its own sake.",
+   "integrated_services": "Service content reaches the user inside their current task through platform frameworks and plug-ins, rather than through one dedicated app per service.",
+   "inferred_additions": {
+    "confidence": "inferred. This corpus's own reading of the principles above, not Jolla's text.",
+    "what_all_screen_estate_implies_for_a_port": "An app that rebuilds a title bar, a tab bar and a toolbar is spending the screen the platform just freed, so it works against the principle rather than merely looking different."
+   }
+  },
+  "ux_framework": {
+   "attribution": "Jolla, UX framework page and the docs UI reference",
+   "lock_screen": "Reached by double tap on a blank display or the power key. Shows time, date, notification icons and system status without unlocking. A left or right edge swipe unlocks. Status information sits at the top, notification icons on the left.",
+   "home": "The centre of the system and where the user lands after unlocking, minimising or closing an app. Open apps appear as covers in opening order and keep their place when reopened; Home grows vertically when there are more than fit. A cover can show the app's key information and carries up to two cover actions at its bottom. Tapping a cover action runs it without opening the app, tapping anywhere else switches to the app.",
+   "events": "One screen to the left of Home. Notifications, weather, upcoming calendar items, quick settings and quick actions.",
+   "top_menu": "A top edge swipe from anywhere, including from inside an app. Device lock, silent mode, ambience switching. A long press on the power key opens it too and adds power off.",
+   "app_grid": "A bottom edge swipe from anywhere. Apps are rearranged, grouped into folders or removed by long pressing an icon; pages are added below when one page is full.",
+   "inferred_additions": {
+    "confidence": "inferred. This corpus's own reading, not Jolla's text.",
+    "why_this_matters_to_an_app": "These are the five system views an app is embedded in. A design that ignores them produces an app that works and still does not belong.",
+    "what_follows_for_the_app": "Home, Events, the Top Menu and the App Grid are all reachable from inside the app, so the app needs no home button, no app switcher and no exit. The cover is the app's presence while it is not in the foreground, which makes it the part of the app the user looks at most often."
+   }
+  },
+  "gestures": {
+   "attribution": "Jolla, gestures page and the docs UI reference",
+   "tap": "Performs an object's default action.",
+   "double_tap": "System wide it wakes a blank display. Inside an app it is available for something like zoom in, which helps one handed use.",
+   "edge_swipe_definition": "Start at the very edge of the screen and move towards the centre. Each edge has exactly one meaning and that meaning does not change with context.",
+   "edge_swipe_top": "Top menu.",
+   "edge_swipe_left_or_right": "Back to Home from inside an app, and unlock from the lock screen.",
+   "edge_swipe_bottom": "App grid.",
+   "peek": "Begin an edge swipe and reverse it without lifting the finger. The user checks status or a cover without leaving the app.",
+   "pulley_hint": "A glow at the top edge of the screen tells the user a pulley menu is there. Moving the page downwards opens it.",
+   "sub_page_hint": "A dot at the top left means the current page is a sub page. Moving the page to the right goes back.",
+   "long_press": "Opens the actions for the individual item under the finger, which is where per item actions belong rather than in visible buttons.",
+   "inferred_additions": {
+    "confidence": "inferred. This corpus's own reading, not Jolla's text.",
+    "do_not_fight_the_edges": "Every edge carries a system gesture, so an app that puts its own horizontal swipe or a draggable control at a screen edge makes those gestures unreliable, the peek first of all. Keep app gestures inside the content area."
+   }
+  },
+  "navigation_architecture": {
+   "attribution": "Jolla, navigation architecture page and the docs UI reference",
+   "page_stack": "An app is a stack of pages. A new page stacks on its parent and moving the page horizontally goes back. This replaces a back button entirely.",
+   "attached_page": "A page appended after the current one, reached by moving the current page in the opposite direction to going back. Jolla names this explicitly as the Sailfish replacement for a hamburger or basement menu and for a sidebar when porting an app.",
+   "pulley_menu": "An interactive extension of a page at its top or bottom, revealed by moving the content. It is triggered by the distance between press and release, so the user never has to reach a particular part of the screen. It replaces a toolbar.",
+   "pulley_menu_limit_jolla": "Jolla states two bounds that agree: keep the number below five so the app still works in landscape, and never show more than four actions in a PullDownMenu or PushUpMenu. Platform apps typically carry one to three per page.",
+   "dialogs": "A dialog is a page that uses the stack gestures: going back cancels, going forward accepts. It has a distinctive header to set it apart from an ordinary page, and the user returns to the parent page afterwards. This replaces accept and cancel buttons.",
+   "deep_stacks": "A deep stack leaves the user unsure where they are. Replace pages with the stack's replace() call instead of pushing endlessly; Jolla cites the platform Maps in-app search as the worked example.",
+   "tabs": "Not part of Jolla's navigation architecture. See community_guidance for the community position on tab layouts, which is the stronger statement."
+  },
+  "theme_is_the_style_source": {
+   "attribution": "Jolla, Silica Theme reference (the page declares Silica 1.0)",
+   "import": "The reference pages show the import as 'import Sailfish.Silica 1.0', which is the line every app writes. The module package on a device carries an unrelated version number.",
+   "the_rule": "Theme is a singleton that carries the platform's colours, fonts, sizes, margins and opacities. Its colours follow the active ambience and its sizes scale with screen size and resolution, so a hard coded value is wrong twice: it ignores the user's ambience and it breaks on another device. Use Theme wherever a value exists.",
+   "stated_as_a_gate_in_definition_of_done": "Jolla's Definition of Done carries it as a checklist item: fonts, colours, margins and other layout parameters come from Silica, to guarantee scalability and a consistent platform look and feel.",
+   "page_margins": "Theme.horizontalPageMargin at the left and right screen edges, Theme.paddingLarge at the top and bottom, for text and for icons inside controls. Graphics and images are the exception and are typically flush with the page edges. Some text controls, such as text fields, combo boxes and PageHeader, already apply horizontalPageMargin and expose leftMargin and rightMargin to adjust it; a custom item has to apply the margin itself.",
+   "property_groups": {
+    "fonts": "fontFamily, fontFamilyHeading, and fontSizeTiny, fontSizeExtraSmall, fontSizeSmall, fontSizeMedium, fontSizeLarge, fontSizeExtraLarge, fontSizeHuge, each with a *Base counterpart that is the unscaled value",
+    "colours": "primaryColor, secondaryColor, highlightColor, secondaryHighlightColor, highlightBackgroundColor, highlightBackgroundOpacity, highlightDimmerColor, overlayBackgroundColor, errorColor, and the fixed pairs darkPrimaryColor, darkSecondaryColor, lightPrimaryColor, lightSecondaryColor",
+    "colour_scheme": "colorScheme, an enumeration, which tells the app whether the ambience is light on dark or dark on light",
+    "paddings": "paddingSmall, paddingMedium, paddingLarge",
+    "item_heights": "itemSizeExtraSmall, itemSizeSmall, itemSizeMedium, itemSizeLarge, itemSizeExtraLarge, itemSizeHuge",
+    "icon_sizes": "iconSizeExtraSmall, iconSizeSmall, iconSizeSmallPlus, iconSizeMedium, iconSizeLarge, iconSizeExtraLarge, iconSizeLauncher",
+    "button_widths": "buttonWidthTiny, buttonWidthExtraSmall, buttonWidthSmall, buttonWidthMedium, buttonWidthLarge",
+    "cover_sizes": "coverSizeSmall, coverSizeLarge, both QSize",
+    "opacities": "opacityFaint, opacityLow, opacityHigh, opacityOverlay",
+    "flicking": "flickDeceleration, maximumFlickVelocity, startDragDistance",
+    "scaling": "pixelRatio, and the dp(size) method which is the same as multiplying by pixelRatio"
+   },
+   "methods": "dp(size); rgba(color, opacity); highlightFromColor, secondaryHighlightFromColor, highlightBackgroundFromColor and highlightDimmerFromColor, each taking a reference colour and a colour scheme; highlightText(text, pattern, color) which returns styled text with the matches highlighted and the rest escaped; iconForMimeType(mimeType); presenceColor(presenceMode) with Theme.PresenceAvailable, PresenceAway, PresenceBusy and PresenceOffline.",
+   "pixel_values_are_not_in_the_documentation": "The reference names the properties and their meaning but not their pixel values, because they scale per device. Nothing in this file states a Theme pixel number. The owning session can measure them on a device and add them here with the release they were measured on.",
+   "custom_layout_parameters": "Jolla's guidance on pixelRatio is explicit: in most cases a custom layout parameter should be avoided, and app layouts should be built from the platform size and padding properties instead. pixelRatio and dp() are for the cases that survive that test."
+  },
+  "colouring": {
+   "attribution": "Jolla, Silica Theme reference and the common pitfalls page",
+   "the_signal": "In the Sailfish style, colour says whether something is interactive. Getting this wrong is the first thing that marks an app as foreign, and Jolla lists it as a pitfall in its own right.",
+   "non_interactive": "Text that does not react to touch takes Theme.highlightColor, and Theme.secondaryHighlightColor for secondary text. Static labels, page headers and section headers are in this group.",
+   "interactive": "Text inside something pressable takes Theme.primaryColor, and Theme.secondaryColor for secondary text. While it is pressed it changes to Theme.highlightColor and Theme.secondaryHighlightColor, and the control's background is painted with Theme.highlightBackgroundColor at Theme.highlightBackgroundOpacity.",
+   "what_secondary_means": "Secondary is optional or additional information that should not take the primary attention, for example a text field's placeholder text.",
+   "use_the_platform_items": "BackgroundItem and ListItem highlight their own background and expose a highlighted property, so a custom component should be built on them. Silica components with built in text, such as Button, ComboBox and ContextMenu, already recolour themselves when pressed.",
+   "the_one_line_that_does_it": "Inside a ListItem or BackgroundItem, bind the colour to the item's highlighted property: color: listItem.highlighted ? Theme.highlightColor : Theme.primaryColor",
+   "custom_mousearea": "A bare MouseArea can imitate it with a highlighted property bound to pressed && containsMouse and a background rectangle filled with Theme.rgba(Theme.highlightBackgroundColor, Theme.highlightBackgroundOpacity). Jolla notes this is not exact: the platform items have slightly delayed colour changes and ListItem also reports highlighted while its menu is open.",
+   "over_a_custom_background": "primaryColor and secondaryColor are tuned by the ambience to work over the ambience wallpaper. An app that paints its own background should switch: Theme.darkPrimaryColor and darkSecondaryColor over a light background such as a document, Theme.lightPrimaryColor and lightSecondaryColor over a dark one such as a video view."
+  },
+  "list_item_sizing": {
+   "attribution": "Jolla, Silica Theme reference, 'Sizing list items and their contents'",
+   "one_line_of_text": "Item height Theme.itemSizeSmall, text Theme.fontSizeMedium, icon Theme.iconSizeMedium, icon and text separated by Theme.paddingLarge.",
+   "two_lines_of_text": "Item height Theme.itemSizeMedium, icon still Theme.iconSizeMedium, first line Theme.fontSizeMedium, second line Theme.fontSizeMedium or smaller in the secondary colours, truncated with TruncationMode.Fade when too long, icon and text separated by Theme.paddingLarge.",
+   "more_lines": "Same pattern with a larger icon and possibly larger fonts; non significant text in secondary colours; Theme.paddingLarge between icon and text.",
+   "horizontal_placement": "The icon sits at x = Theme.horizontalPageMargin, the text column anchors to the icon's right with leftMargin Theme.paddingLarge and to the parent's right with rightMargin Theme.horizontalPageMargin.",
+   "touch_target_floor": "A touchable item is never shorter than Theme.itemSizeSmall, and most should be Theme.itemSizeMedium or taller depending on complexity."
+  },
+  "icon_usage": {
+   "attribution": "Jolla, Silica Theme reference, 'Icon usage'",
+   "size_semantics": {
+    "iconSizeExtraSmall": "the smallest icons, such as the Home status area",
+    "iconSizeSmall": "cover action icons and icons on the Events screen",
+    "iconSizeSmallPlus": "a larger small, used for notification icons",
+    "iconSizeMedium": "the most common size; small to medium list items",
+    "iconSizeLarge": "larger icon displays and buttons",
+    "iconSizeExtraLarge": "very large icon displays",
+    "iconSizeLauncher": "icons in the Home app grid"
+   },
+   "name_to_size_mapping": "The theme icon names follow the same sizes: icon-s- for small, icon-m- for medium, icon-l- for large, used as image://theme/icon-m-name. The full name list is in system_icons.json.",
+   "colouring_a_monochrome_icon": "Append ?<color> to the URI, so a highlighted list row becomes source: 'image://theme/icon-s-name' + (listItem.highlighted ? '?' + Theme.highlightColor : ''). Every monochrome icon follows the same colour rules as text.",
+   "mime_type_icons": "Theme.iconForMimeType(mimeType) returns one of the image://theme/icon-m-file- icons: apk, audio, formatted, image, note, pdf, other, presentation, rpm, spreadsheet, vcard, video, folder. It falls back to icon-m-file-other."
+  },
+  "opacity": {
+   "attribution": "Jolla, Silica Theme reference, 'Opacity usage'",
+   "meanings": {
+    "opacityFaint": "unavailable content, for example something that needs installing first",
+    "opacityLow": "disabled content",
+    "opacityHigh": "de-emphasised content",
+    "opacityOverlay": "overlay content"
+   },
+   "usually_automatic": "Setting enabled: false normally applies the right opacity already, so an app should not set it by hand.",
+   "the_edge_case_worth_knowing": "Disabling a container does block interaction with its children, but the children still render at full opacity, which reads as enabled. Set the container's opacity to Theme.opacityLow in that state as well."
+  },
+  "common_pitfalls": {
+   "attribution": "Jolla, 'Common Pitfalls in Sailfish Application Development'",
+   "note": "Jolla's own list of what ported apps get wrong. For the refactoring use case this is the highest value section in the file: each item is a defect with a named fix.",
+   "items": [
+    "No useful active cover. The cover with its cover actions is the core of multitasking and has no equivalent in Android, iOS or the original N9, so ports simply omit it. A cover should summarise the app's content and open tasks and offer shortcuts for common actions such as saving a new item or searching.",
+    "Non standard label colouring. Colour signals interactivity, so a static label in the primary colour, or a pressed row that does not switch to the highlight colour, reads as broken. See the colouring entry.",
+    "Incorrect alignment, sizing or spacing. Content should align with the platform: Theme.horizontalPageMargin at the left and right edges, Theme.paddingLarge top and bottom, sizes from Theme rather than invented.",
+    "Touch areas that are too small. Grow the MouseArea rather than the visual. In a Row or Column, move the spacing from between the items into the items' own touch areas. Floor is Theme.itemSizeSmall, with Theme.itemSizeMedium as the usual case.",
+    "Too many items in the pulley menu. Never more than four in a PullDownMenu or PushUpMenu; platform apps use one to three.",
+    "Showing a pulley menu whose items are all disabled. Hide the menu instead, by binding its visible property to the condition that makes it useful.",
+    "Missing scroll decorators. Any view whose content can run off screen gets a VerticalScrollDecorator, or the horizontal one, so the user can see where they are and how much is left.",
+    "Buttons where the platform has a gesture. The dialog accept and cancel gestures replace accept and cancel buttons, the back gesture replaces a back button, the edge swipe to Home replaces home and exit buttons, and the pulley menu replaces a toolbar. Use DialogHeader and the Dialog onAccepted and onRejected handlers.",
+    "Insufficient text editor labelling. Every text editor sets both placeholderText, shown while it is empty, and label, shown once the user has typed. The same short string usually serves both.",
+    "No Enter key configuration. In a single line editor the Enter key is free, so give it a job through the EnterKey attached property: move focus to the next field with icon-m-enter-next, submit on the last field with icon-m-enter-accept, or close the keyboard with icon-m-enter-close. Gate it with EnterKey.enabled where empty input makes no sense.",
+    "Unwieldy page hierarchies. A deep stack loses the user. Replace pages with replace() rather than pushing without end; Jolla's example is the platform Maps in-app search."
+   ]
+  },
+  "silica_components": {
+   "attribution": "Jolla, Sailfish Silica component index",
+   "note": "85 documented QML types in Sailfish.Silica, as listed by the index page on 2026-10-26. Knowing the inventory is what stops a session reimplementing something the platform ships.",
+   "names": [
+    "AddAnimation",
+    "ApplicationWindow",
+    "BackgroundItem",
+    "BusyIndicator",
+    "BusyLabel",
+    "Button",
+    "ButtonLayout",
+    "Clipboard",
+    "ColorPicker",
+    "ColorPickerDialog",
+    "ColorPickerPage",
+    "ColumnView",
+    "ComboBox",
+    "ContextMenu",
+    "Cover",
+    "CoverAction",
+    "CoverActionList",
+    "CoverBackground",
+    "CoverPlaceholder",
+    "DatePicker",
+    "DatePickerDialog",
+    "DetailItem",
+    "Dialog",
+    "DialogHeader",
+    "DockedPanel",
+    "Drawer",
+    "EnterKey",
+    "FadeAnimation",
+    "FadeAnimator",
+    "FirstTimeUseCounter",
+    "GridItem",
+    "HighlightImage",
+    "HorizontalScrollDecorator",
+    "Icon",
+    "IconButton",
+    "IconTextSwitch",
+    "InteractionHintLabel",
+    "Keypad",
+    "Label",
+    "LinkedLabel",
+    "ListItem",
+    "MenuItem",
+    "MenuLabel",
+    "Notices",
+    "OpacityRampEffect",
+    "Page",
+    "PageBusyIndicator",
+    "PagedView",
+    "PageHeader",
+    "PageStack",
+    "Palette",
+    "PasswordField",
+    "ProgressBar",
+    "PullDownMenu",
+    "PushUpMenu",
+    "Remorse",
+    "RemorseItem",
+    "RemorsePopup",
+    "RemoveAnimation",
+    "Screen",
+    "ScrollDecorator",
+    "SearchField",
+    "SectionHeader",
+    "Separator",
+    "SilicaControl",
+    "SilicaFlickable",
+    "SilicaGridView",
+    "SilicaItem",
+    "SilicaListView",
+    "Slider",
+    "SlideshowView",
+    "StandardPaths",
+    "Switch",
+    "TapInteractionHint",
+    "TextArea",
+    "TextField",
+    "TextSwitch",
+    "Theme",
+    "TimePicker",
+    "TimePickerDialog",
+    "TouchBlocker",
+    "TouchInteractionHint",
+    "ValueButton",
+    "VerticalScrollDecorator",
+    "ViewPlaceholder"
+   ],
+   "reach_for_these_first_confidence": "recalled. The component index gives names only, so the guidance below is general knowledge of these components rather than something read off a Jolla page. Treat it as a lead to confirm in the Silica reference, not as a vendor statement.",
+   "reach_for_these_first": "SilicaFlickable, SilicaListView and SilicaGridView instead of the plain Qt Quick Flickable, ListView and GridView, because they carry the pulley menu attachment points and the platform's flicking behaviour. ListItem and BackgroundItem instead of an Item with a MouseArea. PageHeader and SectionHeader instead of hand placed titles. ViewPlaceholder for an empty view. RemorseItem, RemorsePopup and Remorse instead of a confirmation dialog for a destructive action: the platform's pattern is a short undo window, not a question."
+  },
+  "porting_replacements": {
+   "attribution": "derived from Jolla's navigation architecture page, the pitfalls page and the Theme reference",
+   "confidence": "inferred, this mapping is a synthesis of the three Jolla sources and is not itself a Jolla document. Two rows lean on recalled knowledge of components the Jolla sources name but do not describe, and say so inline.",
+   "map": {
+    "hamburger or basement menu, navigation drawer": "an attached page, which Jolla names as the replacement, or a pulley menu when it is a short list of actions",
+    "sidebar": "an attached page",
+    "toolbar or action bar": "a pulley menu, maximum four items",
+    "back button, up button": "nothing; the page stack's horizontal gesture does it, and the sub page dot is the affordance",
+    "home button, exit or quit button": "nothing; the edge swipe to Home does it, and an app is not expected to exit",
+    "accept and cancel buttons in a dialog": "a Dialog with DialogHeader, answered by the forward and back gestures and handled in onAccepted and onRejected",
+    "floating action button": "a pulley menu item, or a cover action when it should work while the app is minimised",
+    "overflow menu on a list row": "a long press on the row, which opens a ContextMenu",
+    "tab bar or bottom navigation": "a page stack with an attached page where possible; tabs are not part of Jolla's navigation architecture, see community_guidance",
+    "toast or snackbar": "recalled, confirm in the Silica reference: Notices for a transient message, or a Remorse item where the point is to offer an undo rather than to inform",
+    "pull to refresh": "a pulley menu item, since the downward movement already belongs to the pulley",
+    "scrollbar": "VerticalScrollDecorator or HorizontalScrollDecorator inside the Silica view",
+    "hard coded colours, margins and font sizes": "the matching Theme properties, so the app follows the ambience and scales across devices",
+    "a splash screen": "nothing; the cover is the app's standing presence and the platform's app model has no splash step",
+    "an app internal title bar": "PageHeader, which already carries the platform margins"
+   }
+  },
+  "app_icon": {
+   "attribution": "Jolla, app icons page, the icon story PDF and the CC BY 3.0 template archive",
+   "canvas": "86 by 86 pixels. The PDF states it plainly: an icon size of 86 pixels serves Jolla devices best.",
+   "inner_bound": "85.4 pixels, that is a 0.3 pixel gap on each side between the canvas and the icon's outer vector boundary. Jolla's stated reasons are layout control and a smooth continuous anti aliased outline. Measured in the template SVGs: the circular base shapes are drawn as a circle at centre 43,43 with radius 42.7, which is exactly that.",
+   "base_shape_system": "The shape family is derived rather than drawn: start from a rectangle, merge it with a circle, then rotate and mix the result. The PDF states the family comes to 16 unique base shapes. The point of having several is that one shape cannot fit every icon without compromising the metaphor it is supposed to carry, so the family provides consistency and still lets each icon pick a cue that suits its purpose.",
+   "pick_from_the_family": "An app icon takes one of the base shapes and puts its metaphor inside the inset outline. It does not invent a new silhouette.",
+   "colour": "The base shape is coloured and carries the gradient; the metaphor sits on top, flat, and is usually one colour, sometimes with opacity.",
+   "export": "Export as PNG at 86 by 86. The template ships as ai, psd, pdf and png, editable in a vector editor such as Inkscape or Illustrator or an image editor such as GIMP or Photoshop.",
+   "licence_of_the_template": "CC BY 3.0. The readme inside the archive says attribution is not required: 'You are not required to provide attribution to us, as you making cool apps is enough for us.' The archive also notes that Jolla and Sailfish are trademarks of Jolla Ltd, which is about the names rather than the shapes.",
+   "cross_reference": "app_development.json already records the packaging side of the same subject: launcher icon sizes 86, 108, 128 and 172 under icons/<size>/<target>.png, the template's 86 px SVGs, and that the launcher caches icons so a replaced icon needs lipstick restarted. Read both.",
+   "measured_from_the_template_2026_10_26": {
+    "files": "33 launcher icons in the svg library, every one with viewBox '0 0 86 86'",
+    "base_element": "12 of the 33 draw the base shape as a plain circle, 21 as a path, which is where the merged rectangle and circle variants live",
+    "gradients": "all 33 carry a gradient on the base shape: 27 linear and 6 radial. Of the linear ones the dominant angle is 45 degrees, in 15 of 27, with 4 at -45 and 3 at -135. Which end is the lighter one varies: in 16 of 33 the second stop is the lighter. So a 45 degree diagonal gradient is the convention but neither the angle nor the polarity is a rule.",
+    "method": "read from the SVGs in the template archive with a script, not from the rendered images. The 16 shape family is Jolla's own statement from the PDF and was not re-derived from this count."
+   }
+  },
+  "system_icon_naming": {
+   "attribution": "Jolla, Sailfish Icon Reference page",
+   "how_to_use_one": "image://theme/<name>, for example image://theme/icon-m-home. Append ?<color> to recolour a monochrome icon.",
+   "classes": "icon-s- small, icon-m- medium, icon-l- large, matching Theme.iconSizeSmall, iconSizeMedium and iconSizeLarge. Beyond those three there are icon-splus- for the small plus size, icon-cover- for cover actions, and icon-lock- for lock screen and notification icons.",
+   "counts_2026_10_26": "717 distinct names on the reference page: 415 icon-m-, 173 icon-l-, 66 icon-s-, 29 icon-cover-, 22 icon-lock-, 12 icon-splus-.",
+   "name_list": "The full name list is in system_icons.json.",
+   "inferred_addition": "inferred, this corpus's own observation rather than Jolla's: reach for a platform icon before shipping one, and check the name against system_icons.json instead of inventing it. A name that does not exist renders nothing, so it survives a casual look at the running app.",
+   "not_verified_on_a_device": "The list comes from the documentation page, not from a device's theme directory. Presence of a name on the page is not proof it exists in a given release."
+  },
+  "ambience": {
+   "attribution": "Jolla, docs.sailfishos.org Develop/Ambience",
+   "what_it_is": "The ambience is the user's chosen look: wallpaper plus a set of colours plus sounds. ambienced, a per user systemd service, applies it at boot and on request. The app does not choose these colours, it inherits them through Theme.",
+   "file_layout": "/usr/share/ambience/<name>/<name>.ambience, with images/ and sounds/ beside it.",
+   "colour_keys": "primaryColor, secondaryColor, highlightColor, secondaryHighlightColor, highlightBackgroundColor, highlightDimmerColor, overlayBackgroundColor, backgroundGlowColor, each a 6 or 8 character colour string. These are the same names the app sees on Theme, which is the mechanism behind 'reflect your ambience'.",
+   "other_keys": "displayName, wallpaper, colorScheme set to lightondark or darkonlight, ringerVolume, favorite, version, timestamp, translationCatalog, and the per event tone files ringerToneFile, messageToneFile, mailToneFile, internetCallToneFile, chatToneFile, calendarToneFile and clockAlarmToneFile, each an object with file and enabled.",
+   "wallpaper_size": "2048 by 2048 pixels. The image named after the ambience is also its cover image in the settings app.",
+   "colour_scheme_matters_to_an_app": "colorScheme is lightondark or darkonlight, and Theme.colorScheme exposes it. An app that hard codes light text has no answer for a darkonlight ambience.",
+   "where_the_live_values_are": "the current ambience's settings sit in dconf under /desktop/jolla/theme, readable with dconf dump /desktop/jolla/theme/. All ambiences, built in and user made, are managed in an SQLite database under the user's privileged Ambienced directory.",
+   "creating_one": "from the Gallery app on a single image, which derives the colours automatically; with the community Theme Color app; or as an RPM package.",
+   "set_one_from_the_command_line": "a session D-Bus call to setAmbience on com.jolla.ambienced, object path /com/jolla/ambienced, with one string argument holding a file:// URL to the image. The documentation gives it as a dbus-send one-liner."
+  },
+  "definition_of_done": {
+   "attribution": "Jolla, docs.sailfishos.org Develop/Apps/UI/Definition_of_Done",
+   "note": "Jolla's acceptance checklist for a contribution to the Sailfish OS UI. It is written for contributions to the platform, not for third party apps, but it is the closest thing to a stated bar and it reads as one.",
+   "checklist": [
+    "Reviewed and approved by the area maintainer, preferably one with UI development background.",
+    "Any user facing change reviewed and approved by Jolla design.",
+    "The code matches the design to the pixel. Jolla's wording: pixel accuracy is easy in QML, no reason to be lazy. Icons, backgrounds, margins, colours and fonts match the platform style.",
+    "The UI performs smoothly on the device: no abrupt jumps, stutters or frame rate drops during interaction, no regression in application or page loading time, every state transition fluid and animated, memory consumption reasonable, and the UI scales gracefully to a lot of data points. Measure with the available tools rather than assuming.",
+    "The feature is complete: no states that look unfinished, no empty views, no dummy or temporary development data, and the user is offered a way to recover from errors such as no network or corrupt data.",
+    "Text carries working translation hooks.",
+    "Fonts, colours, margins and other layout parameters come from Silica, to guarantee scalability and a consistent platform look and feel.",
+    "The feature has unit tests covering internal state and imperative functions, existing component tests pass, and changes cause no regression elsewhere, tested by the contributor and verified by the reviewer.",
+    "Committed to source control and building successfully in OBS."
+   ],
+   "further_recommendations": [
+    "Develop and test on a real device.",
+    "Expect several rounds of design review before the experience is polished enough.",
+    "When unsure how something should behave, look at how an existing Sailfish application solved the same case.",
+    "When QML cannot perform, be prepared to drop the problem part to C or C++ and GLSL.",
+    "Read the Qt Quick documentation and the Qt performance documentation; Jolla's own phrasing is to read the performance one again the next day.",
+    "Measure rather than assume: run the QML profiler and gather console API traces, and look for unnecessary component construction or compilation, redundant binding evaluation, long nested JavaScript calls and blocking C++ calls. Anything stalling the main thread for tens to hundreds of milliseconds is to be optimised or moved off the main thread."
+   ]
+  },
+  "community_guidance": {
+   "attribution": "VerdandiTeam blog, Michal Szczepaniak, 'Designing SailfishOS applications'. Paraphrased; the post carries no licence.",
+   "status": "community guidance from a Sailfish app developer, not a Jolla document. Where it is stricter than Jolla, it is one developer's practice and says so.",
+   "design_before_coding": "His first step is not mock ups but deciding, in a few minutes, how the app works, how many pages it needs and how it is laid out, then following that picture while building.",
+   "page_count_ladder": "Most apps centre on one first page, with settings and about reached through the pulley menu. An action on the page, such as adding an item, goes in the pulley menu rather than becoming a button. Limit buttons as far as possible. If more pages are needed, try to fit them in the pulley menu. Something that must stay reachable while the user works on the first page belongs in an attached page, not in a bottom panel.",
+   "pulley_menu_limits": "His numbers are three entries as the optimum and five as the maximum, with seven called an apocalypse level exception, and his reading is that needing five already means the design is wrong. Never use a pulley menu as a delegate in a list that has no natural length limit.",
+   "pulley_menus_are_only_menus": "Do not label a menu entry twice, as in a 'Settings' label above a 'Settings' entry, and do not put controls such as a volume slider in a menu. It is a list of options to pick from.",
+   "tab_layout": "His strongest point: tab layout is unofficial, and its danger is that it fits every app, which is why it spreads. Reserve it for the specific case of many pages that genuinely cannot be arranged through the pulley menu, his example being a music player with playlist, library, files, playback and settings. Otherwise avoid it, because the platform is not Android.",
+   "no_button_grid_as_a_front_page": "A first page that is a grid of six buttons leading to other pages is the pattern he rejects outright. The first page is the page the user returns to, and the additional pages hang off the pulley menu.",
+   "one_click_principle": "After launching, one tap should achieve the app's purpose. His own examples: tapping a list entry starts the video, holding a list entry starts the music.",
+   "kiss": "If a component has to be heavily modified, the design is wrong. Take the examples from the documentation and use the components as intended. His paradox, worth keeping: the less time spent customising the UI, the better it looks."
+  },
+  "refactor_checklist": {
+   "confidence": "inferred. This is this corpus's own synthesis of the Jolla and community sources above, ordered for the job of turning a foreign UI into a Sailfish one. It is not a Jolla document and must not be presented as one.",
+   "scope": "written for a QML UI that came from somewhere else: an Android style layout, a desktop Qt Quick app, or a generic Qt Quick port.",
+   "order_matters": "The first four steps change the app's shape and make the rest cheap. Doing the cosmetic pass first means doing it twice.",
+   "steps": [
+    "1. Replace the window and the roots. Sailfish.Silica ApplicationWindow with Page objects in a page stack. Any Flickable, ListView or GridView becomes the Silica variant, or the pulley menu has nowhere to attach.",
+    "2. Delete the navigation chrome. Remove the title bar, tab bar, toolbar, action bar, drawer, back button, up button, home button and exit button. Each one has a platform mechanism: PageHeader, the page stack gesture, the pulley menu, an attached page, the edge swipe to Home. An app that keeps them is a foreign app with Sailfish colours.",
+    "3. Re-house the actions. Page level actions go into a PullDownMenu or PushUpMenu, four at most and preferably one to three. Per item actions go behind a long press, in a ContextMenu. An action that should work while the app is minimised goes on the cover, as a CoverAction.",
+    "4. Build the cover. A port almost never has one, and Jolla lists its absence first among the pitfalls. The cover summarises the app's content and open tasks and carries up to two cover actions.",
+    "5. Convert dialogs. A confirmation becomes a Dialog with a DialogHeader, accepted and cancelled by the forward and back gestures, handled in onAccepted and onRejected. A destructive action is better served by a Remorse item than by a question.",
+    "6. Replace every hard coded number and colour with its Theme property. Fonts, colours, paddings, item heights, icon sizes, button widths. This is the step that makes the app follow the user's ambience and survive a different screen.",
+    "7. Apply the margins. Theme.horizontalPageMargin at the left and right edges, Theme.paddingLarge at the top and bottom, for text and for icons inside controls. Images may go flush to the edge.",
+    "8. Apply the colour signal. Interactive text in primaryColor and secondaryColor, switching to highlightColor and secondaryHighlightColor while pressed; non interactive text in highlightColor and secondaryHighlightColor. Build pressable rows on ListItem or BackgroundItem and bind to highlighted. If the app paints its own light or dark background, switch to the dark* or light* colour pair.",
+    "9. Fix the touch targets. Nothing touchable below Theme.itemSizeSmall, most at Theme.itemSizeMedium or above. Grow the MouseArea rather than the graphic, and move layout spacing inside the touch areas.",
+    "10. Size the list rows to the platform recipe. One line of text: itemSizeSmall, fontSizeMedium, iconSizeMedium, paddingLarge between icon and text. Two lines: itemSizeMedium, second line in secondary colours, truncated with TruncationMode.Fade.",
+    "11. Swap bitmap and invented icons for platform icons. image://theme/icon-m-name, checked against system_icons.json, recoloured with ?<color> where monochrome.",
+    "12. Add the decorators and the empty state. A VerticalScrollDecorator in every view whose content can run off screen, and a ViewPlaceholder for the empty case, which a port usually renders as a blank page.",
+    "13. Finish the text inputs. placeholderText and label on every editor, and an EnterKey job: next field, submit, or close the keyboard.",
+    "14. Flatten the page stack. If the app pushes pages without end, replace them instead. If the front page is a grid of buttons leading elsewhere, rebuild it as the page the user actually returns to.",
+    "15. Design the app icon. 86 by 86, one of Jolla's base shapes from the template, metaphor inside the inset outline, exported as PNG; the packaging sizes are in app_development.json.",
+    "16. Walk Jolla's Definition of Done, and keep the one click principle in view: after launch, one tap should reach the app's purpose."
+   ],
+   "how_to_use_this_with_a_session": "Give a session this file and system_icons.json, then ask it to walk the steps in order against the app's QML and report what it changed per step. The steps are deliberately each a search and replace with a named target, so the work is checkable rather than a matter of taste."
+  },
+  "dated_claims_to_recheck": {
+   "note": "Everything in this file is documentation, not measurement. These specific claims carry a date or a version and should be re-checked on a current release before anyone leans on them.",
+   "jolla_blog_2015_04_13": "The design philosophy section holds, but the post describes the Sailfish OS 2.0 transition and the Jolla Tablet. Treat as 2015 state and unverified on 5.x: the 'Partner space' to the right of Home, closing an app with a top edge swipe, the move of the cover action from a horizontal swipe to a tap, the reduced set of cover actions, and the then new positioning logic for covers on Home.",
+   "gestures_page_history": "The gestures page itself carries 'Page history: 1st version - Sailfish OS 1.0, obsolete after moving on to Sailfish OS 2.0', so the page has been revised at least once and the current text is the 2.0 era one.",
+   "silica_reference_is_undated": "The Silica reference pages carry no date and no documentation version, so nothing on them says how far behind a release they are. The 'Silica 1.0' on the Theme page is the QML import version and says nothing about that either. A property present on a device but absent from the page is therefore possible and would only show up by measuring.",
+   "pulley_menu_limit_conflict": "Jolla says four at most, one to three typical. The community post says three optimal, five maximum, seven in extremes. Both are recorded on purpose. Jolla's is the platform rule; the difference is itself informative about how much slack the ecosystem tolerates.",
+   "system_icon_names": "717 names read from the documentation page on 2026-10-26; checked on a 5.1.0.11 device the same day: all resolve (system_icons.json, device_check_5_1_0_11).",
+   "theme_pixel_values": "Deliberately absent. They scale per device and belong to a measurement on a device, with the release noted."
+  },
+  "cross_references": "app_development.json holds the measured app side of the same ground: Qt 5.6 gaps, the cover implementation on a C2, launcher icon packaging sizes, fonts, translations, the Harbour store rules and the smooth animation finding. system_icons.json holds the 717 platform icon names. Read those for what was confirmed on hardware; read this file for what the platform's own documentation specifies.",
+  "confidence": "vendor_doc for the Jolla material, community_doc for the VerdandiTeam entry, inferred for porting_replacements and refactor_checklist. Nothing here is confirmed: no claim in this file was checked on a device."
+ }
+}

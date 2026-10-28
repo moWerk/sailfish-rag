@@ -1,0 +1,335 @@
+{
+  "userspace_sailfishos": {
+    "note": "What SailfishOS middleware expects and what it gets on a mainline (non-hybris) kernel, and what had to change: oFono and its Sailfish slot manager, PulseAudio with ohm and pulseaudio-policy-enforcement, ngfd, mce, jolla-camera on Qt 5.6 camerabin, sensorfw, connman, sailjail and the session's launch boosters. Instance: F(x)tec Pro1-X (SM6115) on SailfishOS 5.1.0.11 and, since 2026-10-27, 5.2.0.22. State as of 2026-10-27: UI, haptics, keyboard, audio, camera, mobile data and call signalling work; Settings shows the SIM on the Mobile network page (single slot, no SIM cards page); call audio, sensors, lock code (no encrypted home) and usb-moded are open. Hardware facts behind these items are in the other chapters.",
+    "modem_ofono": [
+      {
+        "title": "Jolla's oFono 1.29 has no QRTR: run upstream oFono 2.x",
+        "general": "Jolla's oFono 1.29 fork has qmimodem disabled and its gobi plugin speaks USB QMUX only, so it cannot drive a SoC modem on QRTR. Upstream oFono >= 2.9 has plugins/qrtrqmi.c (built in together with qmimodem) and needs ell. Use sailfishos-native/ofono (upstream plus the Sailfish slot-manager patches) or the PinePhone port's OBS build of it. ModemManager has no consumer on SailfishOS.",
+        "instance": "Pro1-X SailfishOS 5.1.0.11, 2026-10-24: ofono-2.12.0+git1 and ell-0.70 from sailfish-on-dontbeevil's OBS replaced Jolla's 1.29; the modem appears as /qrtrsoc_0 and registers on LTE at boot. sailfishos-native/ofono also carries 2.13. Same packages on 5.2.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json modem_ofono.qrtr; port log 2026-10-24 03:10, 03:25; Pro1-X port repo port/notes/research/research-modem.md"
+      },
+      {
+        "title": "The modem only reaches the SailfishOS UI through a slot driver",
+        "general": "SailfishOS Settings, connman's cellular technology, the status bar and commhistoryd read modems from org.nemomobile.ofono.ModemManager (the Sailfish slot manager), not from oFono's plain Manager, and the slot manager only lists modems a plugin hands over as slots (ofono_slot_driver_register). The slot manager and ofono_slot_driver_register come from the Sailfish patch set, not upstream oFono, and the Sailfish-patched 2.x tree (sailfishos-native) adds slot support only to the gobi (USB) plugin. Symptom without one: GetModems lists the modem online, SimManager Present, registered, but ModemManager.GetAll returns empty AvailableModems/EnabledModems and Settings shows no SIM. Fix: a slot driver in plugins/qrtrqmi.c modelled on the gobi slot shim (sailfishos-native patch 0010): register an ofono_slot_driver in the plugin's probe, request DMS GET_IDS in lookup_done for the device id (or a placeholder) and add the slot. Slot manager rules: start() returning non-zero means pending until ofono_slot_driver_started(); readiness needs every slot's sim_presence != UNKNOWN; mind the init countdown (slot_manager_init_countdown_cb). Use ofono_watch (sailfish_watch.h) for SIM state, because an absent SIM gives no SIM state-watch callback: mark 'no SIM' explicitly instead of leaving Settings waiting.",
+        "instance": "Pro1-X, Linux 7.3.0-qx1050, SailfishOS 5.1.0.11, oFono 2.12.0+git1 + patch 0019-qrtrqmi-add-slot-driver (about 135 lines; also applies to 2.13), 2026-10-26: ModemManager lists /qrtrsoc_0 available and enabled, default for voice and data, SIM present, ready; connman shows the cellular technology; calls connect both ways and SMS receive works without further changes. Sources read: slot-manager.c, sim.c, qmimodem/sim.c, sailfish_watch.c. The earlier record that nobody had wired qrtrqmi into the slot manager is superseded by this patch.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/patches/ofono/README.md; dbus-send --system --dest=org.ofono org.nemomobile.ofono.ModemManager.GetAll and GetPresentSims after install; moWerk call test 2026-10-26"
+      },
+      {
+        "title": "A single-slot port gets no 'SIM cards' settings page",
+        "general": "jolla-settings shows the SIM cards page only when Telephony.multiSimSupported is true, i.e. oFono reports more than one modem or slot (the page comes from jolla-settings-networking-multisim). A slot driver that registers one slot gives SIM options on the Mobile network page instead. A dual-SIM device needs a second oFono modem with its own modem-side subscription to get the page.",
+        "instance": "Pro1-X with one slot from patch 0019, SailfishOS 5.2, 2026-10-27.",
+        "confidence": "inferred",
+        "date": "2026-10-27",
+        "source": "libsailfishtelephonyplugin strings, settings entries, nemo ModemManager getters; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "oFono 2.x arguments: a deny-list only, never a 1.x allow-list",
+        "general": "In oFono 2.x qrtrqmi, qmimodem, the slot manager and provisioning are built in and udevng is the only plugin in the modem's path. Pass a --noplugin deny-list through /var/lib/environment/ofono/*.conf (OFONO_ARGS) and never copy a 1.x-era --plugin allow-list. Leftover Jolla 1.29 plugins (aml) fail to load against 2.x. APNs come from oFono's built-in provision.db.",
+        "instance": "Pro1-X: OFONO_ARGS=--noplugin=aml,phonesim; no mobile-broadband-provider-info needed.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "Pro1-X port repo port/notes/research/research-modem.md"
+      },
+      {
+        "title": "A modem prep oneshot without RemainAfterExit reruns on every oFono restart",
+        "general": "A prep unit pulled in by ofono.service without RemainAfterExit=yes runs again on each oFono restart; if it skips existing links, manual link changes are silently kept or recreated depending on order. Either delete the links, re-add them, then start oFono, or make the unit RemainAfterExit and fully idempotent.",
+        "instance": "Pro1-X qx1050-modem-prep.service with ofono.service.d/10-qx1050.conf, 2026-10-27: links reappeared after an oFono restart.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-27"
+      },
+      {
+        "title": "Mobile data off through connman: AutoConnect false first",
+        "general": "To switch mobile data off through connman's D-Bus API (as the Settings toggle does), set the service's AutoConnect to false and then Disconnect; a bare Disconnect with AutoConnect true is undone by connman within about 25 ms, which looks like 'the toggle does not stop data'.",
+        "instance": "Pro1-X SailfishOS 5.2 + oFono 2.12.0+git4, 2026-10-27: with AutoConnect false oFono sends WDS STOP_NETWORK and rmnet_data2 goes down; the UI toggle was later confirmed working.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "dbus-monitor of org.ofono.ConnectionContext 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "The provisioning service still needs the Android-era radio user",
+        "general": "Some SailfishOS services still run as Android-era users; a native port must create them (kickstart %post or sysusers).",
+        "instance": "SailfishOS 5.1: dbus-org.nemomobile.provisioning failed until user and group radio (uid/gid 1001, as in droid-config-victara's 99_groups) existed and the D-Bus configuration was reloaded (Pro1-X, 2026-10-23).",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 12:48-12:49"
+      },
+      {
+        "title": "SIM cards settings page is a separate package pulled by multi-SIM device patterns",
+        "general": "Settings > Connectivity > SIM cards ships in jolla-settings-networking-multisim. SailfishOS installs it only through the device configuration pattern of a multi-SIM device (C2: patterns-sailfish-device-configuration-s19mps). A port that installs only patterns-sailfish-device-configuration-common has no SIM cards page, whatever ofono reports. Install the package explicitly.",
+        "instance": "Pro1-X (qx1050) mainline SailfishOS 5.2.0.22: page missing; zypper install jolla-settings-networking-multisim 1.0.75.1 from the jolla repo; added to port scripts/stage1-base.sh (commit 6ac21e8).",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "rpm -qf / --whatrequires on Jolla C2 5.2; port commit 6ac21e8"
+      }
+    ],
+    "audio_policy": [
+      {
+        "title": "SailfishOS sound stack on mainline and where its config comes from",
+        "general": "SailfishOS audio on a native port is PulseAudio with UCM2, pulseaudio-modules-nemo (parameters, mainvolume, stream-restore), pulseaudio-policy-enforcement, and ohm with policy-settings-common. Device files: arm_<device>_default.pa selected through /etc/sysconfig/pulseaudio CONFIG; xpolicy.conf with the card and port names; x-maemo-*.table and /var/lib/nemo-pulseaudio-parameters (module-meego-parameters needs the mode, e.g. ihf) from the droid-hal-configs template; /etc/ohm/*.ini and ohm-policy.conf (D-Bus policy) from the same template. ohmd fails without policy-settings-common and the ohm plugins ('no /etc/ohm/ohmd.ini', dres plugin missing). ohm-configs-default must not be used, but it cannot be removed while ohm requires ohm-configs, so ship the template files over it. The lipstick volume slider needs module-dbus-protocol and mainvolume up before lipstick starts.",
+        "instance": "Pro1-X 2026-10-23: arm_qx1050_default.pa (module-alsa-card device_id=Pro1X, module-policy-enforcement, suspend-on-idle timeout=5), xpolicy.conf from the PinePhone port, ohm configs, x-maemo tables and nemo-pulseaudio-parameters from droid-hal-configs; ohmd clean afterwards; the volume slider appeared after a clean boot with PulseAudio and mainvolume up.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json audio_pulseaudio.stack; port log 2026-10-23 12:45-12:46, 20:02-20:05, 21:20; Pro1-X port repo port/notes/research/research-audio.md, port/notes/external-packages.md"
+      },
+      {
+        "title": "xpolicy.conf: full PulseAudio 17 profile names, and quote card names with spaces",
+        "general": "With PulseAudio 17 the [card] rules in xpolicy.conf must name the full UCM profile ('<Verb> (<devices>)', see audio.json); set $card_profile_voicecall, $card_profile_ihf, $card_profile_headset and the rest per device type (earpieceforcall, ihfforcall, headsetforcall, headphoneforcall and the media types) to the names from pactl list cards. xpolicy matches devices by alsa.card_name; a card name with spaces or parentheses must be quoted, or every [device] rule silently mis-matches. Do not copy single-token values from another port as a pattern.",
+        "instance": "Pro1-X card name 'F(x)tec Pro1X', device_id Pro1X; xpolicy.conf fixed 2026-10-27 to 'HiFi (Mic, Speaker)', 'Voice Call (Earpiece, Mic)' and so on.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/droid-config-qx1050/sparse/etc/pulse/xpolicy.conf, port/notes/research/research-audio.md"
+      },
+      {
+        "title": "Helper streams must be classified into the call policy group",
+        "general": "pulseaudio-policy-enforcement classifies every stream; a helper that plays or records silent keep-alive streams during a call is treated as a media player (gst-launch-1.0 is 'player'), so the policy moves the route to the speaker, the call moves it back, the sink vanishes and the helper restarts: a loop heard as rhythmic codec clicks. Tag the helper's streams with a custom property and add an xpolicy [stream] rule mapping it to group call; custom properties survive, media.name is overwritten by the client library. Verify policy.group = call on the sink-input.",
+        "instance": "Pro1-X qx1050-voicecall 0.1-4, 2026-10-27: gst-launch pulsesink stream-properties pro1x.voice=keepalive, xpolicy property = pro1x.voice@equals:\"keepalive\" with group call; pactl list sink-inputs shows policy.group call. The helper had also matched NixOS sink names first (fixed to Voice_Call). Real-call verification pending.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md"
+      },
+      {
+        "title": "Policy notify loop: UCM profile switches make ohmd reroute forever",
+        "general": "On a mainline port with ALSA UCM, every route (earpiece, speaker, headset) is its own PulseAudio card profile, so a profile switch removes the sink and creates a new one. SailfishOS's policy module (module-policy-enforcement, xpolicy.conf) reports device availability to ohmd for every [device] rule without disable_notify. The sink removal is reported as 'all built-in devices gone' (com.nokia.policy info '0'), ohmd reroutes, the new sink is reported back ('1'), ohmd reroutes again: a profile ping-pong. Android-based ports never see it because the droid card has one profile and routes by port only. Give every [device] rule that matches the built-in card's sink the disable_notify flag.",
+        "instance": "Pro1-X (qx1050) SailfishOS 5.2.0.22, kernel 7.3.0-qx1050, PulseAudio 17: during calls the card flipped between 'Voice Call (Earpiece, Mic)' and 'Voice Call (Mic, Speaker)' about five times a second (cycle 0.18 s). The codec power-cycled audibly (a 'tack' loop on earpiece, a buzz on speaker; wcd937x 'clk already disabled' every 0.3 s) and no call audio passed. Found with dbus-monitor --system (policy info signals, audio_actions decisions, org.nemomobile.Route.Manager AudioRouteChanged earpiece/speaker/earpiece within 7 ms) and pactl subscribe. disable_notify on 18 rules (port commit f4f1bef) ended the loop; call audio still silent afterwards, a separate problem.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port commit f4f1bef; call logs on device /root/calllog-2"
+      }
+    ],
+    "feedback_ngfd": [
+      {
+        "title": "ngfd exits with ENOSPC on 16-slot memless haptics: override the effect list",
+        "general": "ngfd's ffmemless plugin uploads one effect per name in supported_effects plus a default. The stock 50-ffmemless.ini lists 17 names (one a typo, drag_boundary_drag_end) while the kernel's ff-memless core has 16 slots, so on every plain FF_RUMBLE driver the 17th upload fails with ENOSPC, ngfd logs 'Could not load ngfd effects' and exits (same report as ngfd PR #3, PinePhone, 2021). Fix: a file whose name ends in ffmemless.ini and sorts after 50- (e.g. 60-<device>-ffmemless.ini) with [ffmemless] supported_effects listing 12 names or fewer. Files with other names are not merged as plugin parameters, and NGF_FFMEMLESS_SETTINGS overrides only parameters, not the list.",
+        "instance": "Pro1-X AW86224 (FF_RUMBLE only, 16 memless slots), 2026-10-23: 60-qx1050-ffmemless.ini with 12 names; feedback_press played. Found by reading sailfishos/ngfd src/plugins/ffmemless and the kernel's ff-memless.c after three blind fixes.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json vibration_ngfd.enospc, vibration_ngfd.fix; port log 2026-10-23 19:16-20:02; Pro1-X port repo port/notes/research/research-vibration.md"
+      },
+      {
+        "title": "Use libngf-qt5-qtfeedback, not qt5-feedback-haptics-ffmemless",
+        "general": "qt5-feedback-haptics-ffmemless (priority Normal) bypasses ngfd and uploads 2-3 effects per process into the same 16 memless slots; HADK and the PinePhone pattern use libngf-qt5-qtfeedback instead. The ffmemless Qt plugin also treats an upload that returns id 0 as 'effects flushed' and disables theme effects, so when ngfd died first, the keyboard process can get id 0 and tap vibration is silently off.",
+        "instance": "Pro1-X: qt5-feedback-haptics-ffmemless removed, libngf-qt5-qtfeedback installed (2026-10-23). The id-0 mechanism is inferred from qfeedback.cpp lines 398-407 for the observed symptom.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json vibration_ngfd.qt_plugin; Pro1-X port repo port/notes/research/research-vibration.md"
+      },
+      {
+        "title": "Start ngfd after PulseAudio; it never reconnects",
+        "general": "ngfd's canberra and tonegen backends connect to PulseAudio once at startup and do not reconnect. If anything delays PulseAudio (an audio init or re-probe hook in pulseaudio.service.d), ngfd starts first, logs 'can't connect to canberra' and stays silent (no UI clicks, no camera shutter sound) until restarted. Add a user-unit drop-in ngfd.service.d/10-<device>.conf with [Unit] After=pulseaudio.service and Wants=pulseaudio.service.",
+        "instance": "Pro1-X droid-config sparse/etc/systemd/user/ngfd.service.d/10-qx1050.conf (port commit 867d075), verified over reboots, 2026-10-25.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 11:39-15:22; Pro1-X port repo port/droid-config-qx1050/sparse/etc/systemd/user/ngfd.service.d/10-qx1050.conf"
+      },
+      {
+        "title": "Test ngfd on the system bus with an event name",
+        "general": "ngfd owns com.nokia.NonGraphicFeedback1.Backend on the system bus and registers only after its stream-restore and tonegen plugins reach PulseAudio. Test it with gdbus call --system --dest com.nokia.NonGraphicFeedback1.Backend --object-path /com/nokia/NonGraphicFeedback1 --method com.nokia.NonGraphicFeedback1.Play feedback_press '@a{sv} {}', using event names from /usr/share/ngfd/events.d, not effect names. For details stop the user unit and run ngfd -vvv; evdev_trace -i (mce-tools) shows a device's EV_FF capabilities.",
+        "instance": "Pro1-X SailfishOS 5.1, 2026-10-23.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json vibration_ngfd.bus; Pro1-X port repo port/notes/research/research-vibration.md"
+      }
+    ],
+    "mce": [
+      {
+        "title": "mce reads SW_KEYPAD_SLIDE with the N900 polarity",
+        "general": "The Linux input API sets SW_KEYPAD_SLIDE = 1 when the keypad is slid out, but SailfishOS mce (1.116.5) treats 1 as closed (the N900 convention) and has no inversion option. With a Linux-correct DT the screen wakes on closing and blanks on opening, and the keyboard light follows. Test against known resting states, not only transitions. Until mce gets an invert option, the port inverts the hall switch GPIO in a SailfishOS-only DT patch. The [SW_KEYPAD_SLIDE] keys in mce's config are the keyboard's evdev name mapped to the switch device name; a wrong name only breaks keyboard_available (hiding the virtual keyboard), the slide itself still blanks and unblanks.",
+        "instance": "Pro1-X 7.1 (2026-10-24): hall sensor on tlmm 96, upstream DTS GPIO_ACTIVE_HIGH; closing gave SW_KEYPAD_SLIDE 0 but mce logged tklock_keyboard_slide_opened() on it. sfos-dt.patch sets tlmm 96 GPIO_ACTIVE_LOW. Evdev names on mainline: 'Pro1X keyboard', 'Keyboard extra keys'. Upstream proposal: an [EVDEV] invert key in mce.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json mce.slide_switch; port log 2026-10-23 23:30-23:47 (evdev trace, mce journal); Pro1-X port repo port/notes/upstream.md"
+      },
+      {
+        "title": "mce keypad backlight with a one-bit GPIO LED",
+        "general": "mce's keypad backlight is configured with [KeyPad] BrightnessDirectory pointing at the LED's sysfs directory; it turns on with the slide open and the display on. mcetool's 'Keyboard backlight: disabled' is the LED's current state, not a setting. mce scales the keypad brightness by the ambient-light profile, and a GPIO LED has max_brightness 1, so 1 x scale / 100 becomes 0 below the top lux bands: override [BrightnessKeypad] LevelsProfile0 to all 100 in a later-sorting /etc/mce ini. The 1.119 keypad rewrite (BinaryBrightnessFile, dconf enable) is not in SailfishOS 5.1. For logs: mce --verbose --log-function='modules/keypad.c:*'.",
+        "instance": "Pro1-X mce 1.116.5: BrightnessDirectory=/sys/class/leds/white:kbd_backlight, 91-qx1050-keyboard-backlight.ini, [EVDEV] KEY_HOMEPAGE=KEY_HOME from the hybris port (whose configs were Kabouik's). The ALS scaling was disabled for one test and was not the cause of the 'inverted' light, which was the slide polarity.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json mce.keyboard_backlight; port log 2026-10-23 19:25, 23:47; Pro1-X port repo port/notes/research/research-keyboard.md"
+      }
+    ],
+    "camera_app": [
+      {
+        "title": "jolla-camera on mainline: libcamerasrc inside camerabin, env from the session",
+        "general": "jolla-camera on a native port runs Sailfish's Qt 5.6 camerabin with QT_GSTREAMER_CAMERABIN_VIDEOSRC=libcamerasrc, which puts libcamerasrc inside wrappercamerabinsrc. QT_GSTREAMER_CAMERABIN_SRC=libcamerasrc instead replaces camerabin's whole camera source (meant for droidcamsrc with vfsrc/imgsrc pads) and fails to link. Apps launched through boosters never see shell exports: put session environment (camerabin source, GStreamer ranks) into /var/lib/environment/nemo/*.conf and restart the user session. Launching the binary directly without its booster can fail in unrelated ways (camerabin 'Failed to allocate required memory'). Knob names were read from the plugin with strings.",
+        "instance": "Pro1-X 2026-10-24: /var/lib/environment/nemo/70-qx1050-camera.conf; jolla-camera via booster-silica-media. grep -a -oE 'QT_GSTREAMER_[A-Z_0-9]+' libgstcamerabin.so.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.stack; Pro1-X port repo port/droid-config-qx1050/sparse/var/lib/environment/nemo/70-qx1050-camera.conf, port/notes/research/research-camera-sink.md"
+      },
+      {
+        "title": "Remove the hybris video texture backend on a native port",
+        "general": "nemo-qtmultimedia-plugins-gstvideotexturebackend (the hybris QML video node) makes QtMultimedia request droideglsink; on a non-hybris port camerabin stops at the viewfinder sink. Uninstall it so VideoOutput falls back to Qt's own renderer (qgstvideorenderersink). A release upgrade may reinstall it as a new package.",
+        "instance": "Pro1-X SailfishOS 5.1.0.11, 2026-10-24; the 5.2 dup reinstalled it (2026-10-27).",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 04:10; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Qt 5.6 camerabin fixes needed for libcamerasrc",
+        "general": "Sailfish qtmultimedia (mer-5.6 with the +v4l change) needs these changes to work with libcamerasrc: (1) camera enumeration: with USE_V4L, qgstutils scans /dev/video* and passes input.index by value to VIDIOC_S_INPUT (EFAULT), so every CAMSS node answering ENUMINPUT with a camera input is listed as a camera with unspecified position (about 12 bogus cameras, and jolla-camera's front/back switch is a no-op; fixed in Qt 5.15); enumerate through GStreamer's libcameraprovider instead, back cameras first, and select with libcamerasrc camera-name; (2) source caps without a size: CameraBinSession::supportedResolutions() dereferences a null width (SIGSEGV right after the shutter sound, called from jolla-camera's CameraConfigs::handleStatus()); guard it and fall back to camerabin's capability properties; (3) take sizes from the device provider's caps, adding a framerate because supportedFrameRates dereferences it unchecked; (4) qgstvideorenderersink returns GST_FLOW_ERROR when the GUI thread misses a frame (300 ms deadline), ending the stream with 'internal data stream error' after about 1 s: drop the frame instead; (5) camerabin listens only for notify::ready-for-capture, and libcamerasrc is ready from the start and never notifies, so read the property once at start or the shutter stays disabled and video records no file. Before blaming the resource policy, log which capture condition fails: the ohm resources were granted.",
+        "instance": "Pro1-X patches/qtmultimedia 0001-0005 on mlehtima/qtmultimedia v4l c98eb6d0, 2026-10-24 (the enumeration patch took three releases): result two cameras, back IMX582 default, front S5K4H7; first 3840x2400 photo; photo and video entries in the gallery; viewfinder updates reliably at about 10-15 fps (CPU ISP era). Root cause of the crash confirmed with a core dump (see tooling_on_device).",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.stack; Pro1-X port repo port/patches/qtmultimedia, port/notes/upstream.md, port/notes/research/research-camera-switching.md; port log 2026-10-24"
+      },
+      {
+        "title": "Camera orientation: libcamera Rotation is already Qt's value; mirrored front cameras rotate the other way",
+        "general": "libcamera's Rotation property equals QCameraInfo::orientation (sensor top at screen right = 270 in Qt, 90 in Android terms; libcamera's Android HAL uses 360 - Rotation), so no Android-style conversion is needed; Qt converts droidcamsrc's mount angle with (720 - x) % 360. In Qt 5.6 QSGVideoNode orientation is positive anticlockwise (case 270 maps the texture's bottom-left to top-left, a 90 degree clockwise turn); verify conventions in that code, not from memory. jolla-camera does not rotate its VideoOutput itself: on hybris the video texture backend rotated by droidcamsrc's image-orientation tag, so with Qt's default renderer qtmultimedia must add the camera orientation. When the renderer mirrors front-camera frames, rotate the other way (360 - orientation), as Qt's autoOrientation code does; mirroring while still rotating by +orientation leaves the front picture 180 degrees off. This changes the contract: apps that compensate themselves will double-rotate. Saved front photos and videos stay unmirrored, as on hybris.",
+        "instance": "Pro1-X: libcamera Rotation front 90, back 270 from DT. qtmultimedia patch 0006 removed a wrong Android-style conversion (photos were 180 off), 0007 adds the source orientation to the default renderer (viewfinder was 90 counter-clockwise), release 9 mirrored but still rotated +90 (front 180 off), release 10 (commit fbb77699) rotates mirrored front cameras the other way: upright and mirrored (2026-10-25 15:29). jolla-camera: viewfinderOrientation = (720 + camera.orientation + pageRot) % 360, EXIF captureOrientation = (720 + camera.orientation +- _pictureRotation) % 360.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.orientation; qsgvideonode_p.cpp read 2026-10-25 01:42; qtmultimedia commits 428a7975 (R9), fbb77699 (R10)"
+      },
+      {
+        "title": "sailjail hides libcamera's data directory",
+        "general": "sailjail/firejail hides /usr/share/libcamera, so inside the camera app's sandbox the software ISP finds no IPA or tuning files, disables debayering and offers only raw Bayer: a black viewfinder. Whitelist it in /etc/firejail/disable-common.local (included by every profile via disable-common.inc). Upstream fix would be to add the path to the Camera permission. 'Resource not found' for a file that exists usually means the sandbox. Files placed in sandbox-copied directories must be root-owned (hazards.json).",
+        "instance": "Pro1-X 2026-10-24: after the fix about 8 fps at 3840x2400 with GPU debayer.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.sandbox; Pro1-X port repo port/droid-config-qx1050/sparse/etc/firejail/disable-common.local, port/notes/upstream.md; SailfishOS/device_access_and_tooling.json boot_evidence.sandboxed_apps"
+      },
+      {
+        "title": "Restart the camera boosters after replacing camera libraries",
+        "general": "jolla-camera runs from prestarted boosters that keep the old libcamera and qtmultimedia mapped; after installing new libraries restart them as the session user: systemctl --user restart booster-silica-media@jolla-camera.service booster-silica-media@jolla-camera-lockscreen.service with XDG_RUNTIME_DIR=/run/user/100000 and DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/100000/dbus/user_bus_socket. The lock-screen booster also opens the camera, which adds lens open/close cycles at start. Restarting other session pieces by hand (lipstick, ngfd, pulseaudio) can stop boosters too, and an app that then 'crashes' may only be missing its booster.",
+        "instance": "Pro1-X SailfishOS 5.1.0.11, 2026-10-23..25: stable booster PIDs 33 s after restart; a browser 'crash' was booster-browser@sailfish-browser stopped by a session restart.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-23 19:49, 2026-10-25"
+      },
+      {
+        "title": "jolla-camera's video size cap",
+        "general": "jolla-camera picks the largest size of the chosen aspect ratio; per-mode videoResolution keys are ignored. The dconf key /apps/jolla-camera/maxVideoResolution='WxH' (read in cameraconfigs.cpp) caps it, e.g. 1920x1080 for a 1080p encoder.",
+        "instance": "Pro1-X: sparse/etc/dconf/db/vendor.d/jolla-camera-hw.txt with maxVideoResolution='1920x1080'.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.video_size; Pro1-X port repo port/droid-config-qx1050/sparse/etc/dconf/db/vendor.d/jolla-camera-hw.txt"
+      },
+      {
+        "title": "Still capture and viewfinder through camerabin without GstPhotography",
+        "general": "camerabin2 with wrappercamerabinsrc around a plain source captures stills without GstPhotography: one video frame is routed to imgsrc and encoded by the image/jpeg profile (jpegenc). Qt's plugin attaches its imageCaptured/imageSaved probes by element-name substring (jpegenc, jifmux) and forces viewfinder caps to the capture size, so no renegotiation happens at shutter time; request only sizes the camera lists, or a fixed-size capsfilter fails negotiation. The consequence on a software ISP: with a single libcamera stream the photo-mode viewfinder runs at full photo resolution and is slow; a separate viewfinder stream or role would be needed.",
+        "instance": "Read in the built qt5-qtmultimedia 5.6.2+v4l and GStreamer camerabin sources, 2026-10-24. Pro1-X rear photo mode 3992x3000 viewfinder 10-15 fps against 20-30 fps front (CPU ISP era), open as of 2026-10-25.",
+        "confidence": "inferred",
+        "date": "2026-10-25",
+        "source": "Pro1-X port repo port/notes/research/research-camera-switching.md; moWerk observation 2026-10-24 23:09"
+      },
+      {
+        "title": "Camera tests from ssh never become the active app",
+        "general": "jolla-camera only starts the camera when it is the active foreground app, so launches from ssh stay in LoadedState. For headless runs: start it as the session user with XDG_RUNTIME_DIR=/run/user/100000 and WAYLAND_DISPLAY, unlock and turn the display on with mcetool first; Qt on SailfishOS logs to the journal, not stderr, so an empty stdout log means nothing; use LIBCAMERA_LOG_FILE for libcamera. For freezes during real use, give the booster a debug log through a user drop-in (booster-silica-media@jolla-camera.service.d with Environment=GST_DEBUG=camerabin*:5,libcamerasrc:5 and GST_DEBUG_FILE under ~/.cache/com.jolla/camera/) and let a person use the app. GST_DEBUG_DUMP_DOT_DIR makes Sailfish's camerabin dump camerabin*.dot graphs that show which element really is the camera source. SailfishOS ships no 'offscreen' Qt platform plugin, so a headless QML probe (sailfish-qml from libsailfishapp-launcher) has to run as a Wayland client of lipstick or be replaced by a lower-level tool (cam -p).",
+        "instance": "Pro1-X SailfishOS 5.1/5.2, 2026-10-24..27: a QML probe with QT_QPA_PLATFORM=minimal or wayland hung; cam -c <id> -p gave Rotation and Location directly; an empty /tmp/jc.log while the journal had output.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-24 16:14, 2026-10-25 01:28-01:31, 2026-10-27; Pro1-X port repo port/notes/research/research-camera-switching.md"
+      },
+      {
+        "title": "Fallback camera app: Shutter, not installable as of October 2026",
+        "general": "piggz's harbour-shutter talks to libcamera directly (no GStreamer sink) and is the proven fallback camera on native ports, but its OBS build is unresolvable (Qt6/KF6 dependencies) and the only published RPM links libcamera.so.0.3.",
+        "instance": "Checked 2026-10-24; the dependencies exist in chum:testing 5.1_aarch64.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json sensors_camera.camera; Pro1-X port repo port/notes/research/research-camera-sink.md"
+      }
+    ],
+    "sensors_sensorfw": [
+      {
+        "title": "sensorfw adaptors for SSC sensors as out-of-tree plugins",
+        "general": "SailfishOS reads sensors only through sensorfw adaptor plugins selected in its config; nothing exists for Qualcomm SSC, and iio-sensor-proxy's D-Bus carries no raw accelerometer, gyroscope or magnetometer data. sensorfw-qt5-devel ships deviceadaptor.h, the ring buffer, the data types, libsensorfw-qt5.so and sensord-qt5.pc, so adaptors can be a separate package (lib<name>-qt5.so in sensord-qt5/, mapped in a sensord.conf.d [plugins] section) rather than a sensorfw fork. Shape: one base class plus one plugin per sensor (accelerometer, gyroscope, magnetometer, ALS, proximity), modelled on sensorfw's hybris adaptors (same DeviceAdaptor shape, start/stop refcount, standby) and on Affe Null's work-in-progress IIO split (an IioAdaptor base with per-sensor plugins). libssc is GLib based and sensord's Qt loop runs on the GLib default context, so async libssc calls need no worker thread. Convert units: m/s^2 to milli-G (x 101.97), rad/s to milli-degrees/s (x 57295.78), uT to nT (x 1000); lux as is; proximity near/far only. Qt's 'signals' macro breaks GLib headers (struct fields named signals): #pragma push_macro/#undef signals around glib-object.h and gio.h. Ship the [plugins] config separately: plugins stay inert until it names them, and mce starts ALS and proximity as soon as sensord loads it.",
+        "instance": "Pro1-X package sensorfw-qt5-ssc 0.1-1 against sensorfw 0.15.1 and libssc 0.4.4: five plugins plus an SscAdaptor base (create/open/close state machine), mount matrix -1,0,0,0,-1,0,0,0,1 from the NixOS port; built without warnings 2026-10-27, never run on hardware. Known gap: an adaptor destroyed during a pending async call gets a dangling callback. IIO refactor: github.com/affenull2345/sensorfw commit 945e037 (2025-12-13, not upstream), pointed out by Michal (Mister_Magister).",
+        "confidence": "inferred",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/packages/sensorfw-qt5-ssc/README.md, port/notes/sensors-design.md; rpm -ql sensorfw-qt5-devel in the SDK target"
+      },
+      {
+        "title": "Settings needs csd hw-settings feature flags for sensor items",
+        "general": "SailfishOS gates sensor availability (20-sensors-default.conf) on ssu-sysinfo hw-settings Feature_* flags, so the device config needs a csd hw-settings.ini for Settings to show sensor items.",
+        "instance": "From the sensorfw config research; victara ships sparse/usr/share/csd/settings.d/hw-settings.ini. Not yet done for the Pro1-X.",
+        "confidence": "inferred",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/notes/research/research-sensors-camera.md, port/notes/sensors-design.md"
+      }
+    ],
+    "connectivity": [
+      {
+        "title": "Give the Wi-Fi interface a stable MAC before connman creates its device",
+        "general": "ath10k on mainline often finds no MAC and randomises it each boot, so connman treats every boot as a new network and forgets saved ones. Set a locally administered address derived from /etc/machine-id, in a oneshot unit wanted by sys-subsystem-net-devices-wlan0.device and ordered Before=connman.service and wpa_supplicant.service. A udev RUN rule races connman. Saved connman entries keyed by an old MAC must be renamed (directory and section header). Converting the reference OS's NetworkManager profile into a connman service did not match the scanned network; entering Wi-Fi once in Settings after the MAC is stable works. When installing from a sibling OS on the phone, convert its keyfiles into connman provisioning files on the device (chmod 600) so credentials never leave it.",
+        "instance": "Pro1-X 7.1 ath10k, 2026-10-23/24: qx1050-wlan-mac.sh and qx1050-wlan-mac.service (idea from droid-config-victara's victara-wlan-mac); connected after migrating favourites; the derived MAC stayed stable over four SailfishOS boots, while NixOS (random MAC per connection) caused new-device alerts on the router. install-on-nixos.sh converts the credentials on the device.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json dual_boot_nixos.nixos_wifi; port commit 'Wi-Fi: start connman and wpa_supplicant after wlan0 has its stable MAC'; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-wlan-mac.sh, port/scripts/install-on-nixos.sh"
+      },
+      {
+        "title": "Contrast: Android kernels with PARANOID_NETWORK break systemd-resolved",
+        "general": "Android kernels with CONFIG_ANDROID_PARANOID_NETWORK let only group inet (3003) open sockets; SailfishOS 5.1 resolves names through systemd-resolved, whose user is not in that group, so every lookup fails while direct queries work. Mainline kernels do not have the option.",
+        "instance": "Pro1-X halium 4.19 port after the 5.1 upgrade (2026-10-21): fixed with gpasswd -a systemd-resolve inet and a restart of systemd-resolved. The Jolla C2 (hybris, 5.4) was not affected.",
+        "confidence": "confirmed",
+        "date": "2026-10-21",
+        "source": "port log 2026-10-21 17:01-17:03; SailfishOS/devices.json fxtec_pro1x_port.upgrade_to_5_1.dns_bug_on_5_1"
+      }
+    ],
+    "session_and_ui": [
+      {
+        "title": "Silica needs a pixel ratio from the adaptation",
+        "general": "Without a pixel ratio Silica logs 'No pixel ratio defined' and uses 1.0. Set theme_pixel_ratio and the matching icon subdirectory in a dconf vendor.d file and install the matching z-graphics packages; take the value from an older port of the same device. A lipstick restart applies it.",
+        "instance": "Pro1-X: /etc/dconf/db/vendor.d silica-configs [desktop/sailfish/silica] theme_pixel_ratio=1.5, theme_icon_subdir=z1.5 (value from droid-config-halium-qx1050), 2026-10-23.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 12:22, 12:46-12:47"
+      },
+      {
+        "title": "Hardware-dependent UI is hidden when nothing registers",
+        "general": "SailfishOS hides torch, sensor and similar settings when the backing hardware is not registered; a missing toggle is a symptom of the missing backend, not a separate bug.",
+        "instance": "Pro1-X SailfishOS on 7.1 (2026-10-23): no torch icon, no sensor items, the multicolour notification LED (rgb:status) not driven by mce, the Bluetooth toggle blinking forever (kernel re-power bug), microSD not listed (kernel).",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "moWerk test round 2026-10-23 19:46"
+      },
+      {
+        "title": "A device lock code needs an encrypted home volume",
+        "general": "SailfishOS device lock (encsfa) stores the code as the LUKS key of /dev/sailfish/home. A port without that volume cannot set a lock code (the startup wizard asks for a security code and setting it fails). Either run without a code or set up an LVM + LUKS home (sailfish-device-encryption-community, shipped on the dontbeevil OBS); plan encryption support for a native port.",
+        "instance": "Pro1-X SailfishOS 5.1 on a directory rootfs, 2026-10-23: the wizard asked twice, setting a lock code failed. Still open 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "moWerk 2026-10-23 12:22; journal and source 2026-10-23 12:55; Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "Measure boot before blaming the UI; 25-second D-Bus timeouts point at a dead service",
+        "general": "Measure with systemd-analyze before blaming the UI for a slow boot. 25-second D-Bus timeouts in lipstick after boot show up as a spinner at first wake and point at a service that never answers.",
+        "instance": "Pro1-X 2026-10-24: UI after 27 s of userspace; four lipstick timeouts 45-75 s after boot, owner not yet traced.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 13:56"
+      }
+    ],
+    "tooling_on_device": [
+      {
+        "title": "Core dumps of sandboxed SailfishOS apps, analysed with gdb on the host",
+        "general": "Sandboxed, credential-switched apps (booster plus firejail) do not dump core by default. Use a pipe core_pattern ('|/usr/bin/droid/core-dump.sh %p %e'; the helper runs in the root namespace) plus fs.suid_dumpable=2, and LimitCORE=infinity on the booster user unit through a drop-in. Analyse on the host: copy the mapped libraries into a sysroot (tar over ssh, not rsync), unpack the matching -debuginfo RPM from the OBS repo, set sysroot, debug-file-directory and solib-search-path. Reset core_pattern afterwards.",
+        "instance": "Pro1-X 2026-10-24: confirmed the jolla-camera SIGSEGV in CameraBinSession::supportedResolutions() with native-common's qt5-qtmultimedia-debuginfo.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 16:40"
+      },
+      {
+        "title": "Trace ohm resource decisions",
+        "general": "For ohmd debug output write DEBUG_FLAGS=--verbose=debug --trace=resource=all to /etc/sysconfig/ohmd.debug and restart ohmd; empty it afterwards. QtMultimedia camerabin gates capture on resources granted by ohm (libresource); NEMO_RESOURCE_DISABLE bypasses the policy for tests. oFono's QMI layer logs more with OFONO_QMI_DEBUG; a voice helper may log to $XDG_RUNTIME_DIR.",
+        "instance": "Pro1-X 2026-10-24.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 17:29-18:00; Pro1-X port repo port/notes/research/research-modem.md"
+      },
+      {
+        "title": "SailfishOS userland traps for scripted debugging",
+        "general": "SailfishOS has no timeout binary: a command wrapped in timeout never runs and the empty output looks like a result. connmanctl, bluetoothctl, strace, gdb, nc and wget are absent, zypper only after pkcon install zypper, while curl and busctl exist (python3 is on Jolla's device images but was absent from the port's pattern-built rootfs); ip lives in /usr/sbin, which is not on the user's PATH over ssh. BusyBox 'install -o root -g root -m 4755' leaves the file without the setuid bit (chown after chmod clears it): use cp, chown, chmod in that order and test with [ -u file ]. Print matches instead of counting them.",
+        "instance": "Confirmed on SailfishOS 4.6.0.15 and 5.0.0.73 (2026-10-03); the missing timeout also met on the Pro1-X port.",
+        "confidence": "confirmed",
+        "date": "2026-10-03",
+        "source": "SailfishOS/device_access_and_tooling.json busybox_userland_traps"
+      }
+    ]
+  }
+}
