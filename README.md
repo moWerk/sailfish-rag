@@ -38,8 +38,9 @@ Point a session at the folder that matches the task, not at the repository.
 
 ## Mainline
 
-Ported SailfishOS 5.2 onto the F(x)tec Pro1-X (Qualcomm SM6115) on its own 7.3
-kernel, with no vendor kernel, no libhybris and no halium. 270 labelled entries
+This corpus came out of porting SailfishOS 5.2 onto the F(x)tec Pro1-X
+(Qualcomm SM6115) on its own 7.3 kernel, with no vendor kernel, no libhybris
+and no halium. 270 labelled entries
 across fourteen chapter files: 224 confirmed, 30 reported by a named source, 16
 inferred.
 
