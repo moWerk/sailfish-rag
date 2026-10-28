@@ -9,11 +9,15 @@ It is the app-side companion to
 which covers bringing a phone up on a mainline kernel. Where the two overlap, they say the
 same thing on purpose.
 
-The practice in sections 1, 4, 9 and 10 is condensed from
-[PRACTICE.md](https://github.com/moWerk/llmgd-specs/blob/main/PRACTICE.md) (LLMGD v0.3, CC
-BY-SA 4.0), which grew out of porting eight watch apps to SailfishOS with an LLM in the open.
-Read it in full once; it says why, where this file only says what. The platform material in
-sections 5 to 7 is Jolla's, distilled in this repository and linked at the end.
+Sections 1, 3, 8, 9 and 10 are an adaptation of
+[PRACTICE.md](https://github.com/moWerk/llmgd-specs/blob/main/PRACTICE.md) (LLMGD v0.3, by
+moWerk, [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)), which grew out of
+porting eight watch apps to SailfishOS with an LLM in the open: its stance and §1 in sections
+1 and 3, its §2 in section 9, its §4 to §6 and §8 in section 8, its §9 in section 10. Section
+4 mixes its epistemic rules with this corpus's own method, and section 2 and sections 5 to 7
+are not from it. Read PRACTICE.md in full once; it says why, where this file says what. The
+platform material in sections 5 to 7 is Jolla's, distilled in this repository and linked at
+the end.
 
 Copy this file into the root of your project and fill in **Local setup**. Everything else is
 meant to hold as written.
@@ -71,10 +75,11 @@ never in git. The agent uses it itself instead of handing commands back.
   or commit message. Paste the evidence inline instead.
 - Never present a guess as a finding, and never claim a visual result nobody has seen
   rendered.
-- Never redesign the author's UI during a refactor. A refactor is logic and structure. Their
-  visual design is preserved unless they asked for a change. Propose, do not apply.
-- Never force a display on to make a test convenient. It burns the panel and it falsifies
-  exactly the behaviour being measured.
+- Never redesign the author's UI on the agent's own initiative. In a logic or structure
+  refactor their visual design is preserved as it is. The platform refactor in section 6 is
+  the deliberate exception, because its whole purpose is to change how the app looks: there,
+  each step is proposed, shown rendered, and applied once the author has said yes. Outside
+  that, propose rather than apply.
 - Do not work around a permission or safety denial of the agent's own tooling. Stop, say what
   was attempted and why, and let the author decide.
 - Never construct an identifier. Commit hashes, serials, UUIDs and paths are paste-only from
@@ -207,16 +212,18 @@ so treat them as the release they name.
 - **A pure QML app can ship as one noarch RPM** with the `sailfish-qml` launcher, which covers
   several releases and architectures at once. An older release's `rpm` cannot read the current
   SDK's payload compression, so force xz in the spec where a package is meant for one. QML alone
-  cannot write files, so an app that writes files keeps its C++. `qmake` is not asked to parse QML
-  in that layout, so syntax errors surface at runtime: run `qmllint-qt5` on the host as part of
-  the build.
+  cannot write files, so an app that writes files keeps its C++. `mb2 build` does not parse the
+  QML in that layout, so syntax errors surface at runtime: run `qmllint-qt5` on the host as part
+  of the build.
 - **Translations** use `qsTrId()` with `//%` source text. The `translations/` directory must
   exist before the first build and the generated `.ts` is committed, or the app shows raw ids.
+  The release step drops untranslated strings unless the unfinished ones are kept, which is the
+  same symptom from the other end: raw ids on a device with no translation yet.
 - **Store rules bite early.** The Harbour validator allows a fixed permission list, and
   `Sensors` is not on it: sandboxed without it, an accelerometer reports as connected and reads
-  zero, so a tilt-controlled app cannot be a Jolla Store app. Haptics through the ngf
-  notification framework is refused as well, where `QtFeedback`'s `ThemeEffect` with its press
-  variants is allowed. Decide the
+  zero, so a tilt-controlled app cannot be a Jolla Store app. Haptics through the platform's
+  non-graphic feedback daemon is refused as well, where `QtFeedback`'s `ThemeEffect` with its
+  press variants is allowed. Decide the
   store question before the architecture, not after.
 - **Sandboxing is worth doing from the start.** An app that only writes its own config
   directory runs with an empty permission list, which is both the easiest review and the
@@ -325,8 +332,19 @@ Jolla's and is linked rather than reproduced.
 
 ## Credits
 
-The review rules in sections 3, 4 and 9 come from an AsteroidOS co-maintainer's guidance and
-from a SailfishOS app developer's answers in the Jolla forum, both credited by name in the
-[LLMGD README](https://github.com/moWerk/llmgd-specs#credits). The platform material in
-sections 5 to 7 is Jolla's. What is left is this corpus's own: the order of the refactor, the
-measured findings, and the mistakes that produced the rules.
+The review rules in sections 3 and 9, and the planted-bug test rule in section 4, come from
+**Ed Beroset**, AsteroidOS co-maintainer, whose guidance on moWerk's contributions they were:
+one concern per commit, the reviewer's attention as the scarce resource, saying what did not
+change, one name per concept, simplifying before adding, edge-case-minded tests, no check-in
+without passing tests, and agreeing the direction before large work. The ecosystem lessons in
+section 3 and the noarch packaging route in section 7 come from **poetaster**, SailfishOS app
+developer, who answered moWerk's first ports in the Jolla forum. Both are credited the same
+way, and for the same stated reason, in the
+[LLMGD README](https://github.com/moWerk/llmgd-specs#credits).
+
+The platform material in sections 5 to 7 is Jolla's. What is left is this corpus's own: the
+order of the refactor, the measured findings, and the mistakes that produced the rules.
+
+Bringing work that was made before any of this into reviewable shape is PRACTICE.md section
+10, which keeps the history restructured and the result unchanged, with a ready prompt for the
+session that does it.
