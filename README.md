@@ -16,8 +16,13 @@ would confidently return the wrong one:
 
 ## How to use it
 
-Point a session at the folder that matches the task, not at the repository.
+Point a session at the folder that matches the task, not at the repository. Each
+folder has an `AGENTS.md` written to be copied into the root of your own
+project, so an agent carries the instructions with it.
 
+- Writing, porting or refactoring an app: `SailfishOS/AGENTS.md` first. It is
+  the app-side working practice condensed into one file, and it points at the
+  JSON for the detail.
 - Refactoring a UI that works but does not belong on the platform: read
   `SailfishOS/design_guide.json`, then check every theme icon name against
   `SailfishOS/system_icons.json` before it is written into QML.
@@ -30,6 +35,7 @@ Point a session at the folder that matches the task, not at the repository.
 
 | file | what it holds |
 |---|---|
+| `AGENTS.md` | instructions for an LLM coding agent writing, porting or refactoring a SailfishOS app. The practice from [PRACTICE.md](https://github.com/moWerk/llmgd-specs/blob/main/PRACTICE.md) plus the platform and app findings from this folder, condensed into one file to copy into a project root and fill in at section 0 |
 | `design_guide.json` | the platform's design and UX specification in 25 sections: principles, the five system views, gestures, navigation, Theme as the single style source, the colour signal, Jolla's own list of porting pitfalls, 85 Silica component names, app and system icons, ambience, Jolla's Definition of Done, one credited community guide, and a derived refactor checklist |
 | `system_icons.json` | 717 platform theme icon names by size class, so a session can check that a name exists instead of inventing one. All 717 resolved on a 5.1.0.11 device |
 | `app_development.json` | what porting a QML app actually took: Qt 5.6 gaps, the logging trap, the project skeleton, cover, icons, Harbour store rules, tall-screen layout, audio capture, sensors through the Camera permission |
