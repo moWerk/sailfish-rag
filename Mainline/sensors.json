@@ -33,6 +33,22 @@
         "confidence": "confirmed",
         "date": "2026-10-26",
         "source": "Pro1-X port commit 5e43769; port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-hexagonrpcd-prepare.sh, port/packages/hexagonrpc/upstream/README.md"
+      },
+      {
+        "title": "The SSC has a pedometer (step counter) that counts on the ADSP",
+        "general": "Qualcomm's Sensor Core ships a pedometer virtual sensor on the accelerometer, data type 'pedometer', on-change. Events (vendor sns_pedometer.proto): SNS_PEDOMETER_MSGID_SNS_STEP_EVENT = 1028 and SNS_STEP_EVENT_CONFIG = 775, both message { required uint32 step_count = 1 } with the running total (config event once at enable). The count is shared by all clients of the sensor and keeps running while any client holds it open. Vendor configs also list sns_wrist_pedo, sns_smd, sns_tilt, sns_amd and more under /vendor/etc/sensors/config.",
+        "instance": "Pro1-X SM6115, mainline 7.3: libssc patch 0003 (SSCSensorPedometer, ssccli --sensor pedometer). 181 steps reported for 170 walked, 68 for about 60: a few percent high. A new client opened while another held the sensor got the same running total.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline packages/libssc/rpm/0003-Add-a-pedometer-step-counter-sensor.patch"
+      },
+      {
+        "title": "ssccli --timeout does not exit",
+        "general": "libssc 0.4.4's ssccli calls the close callback after --timeout but the process stays (seen with the pedometer); a forgotten test run keeps the sensor enabled. Kill it by PID.",
+        "instance": "Pro1-X: a 900 s run was still alive 10 min after its timeout.",
+        "confidence": "confirmed, cause not investigated",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline"
       }
     ],
     "first_run": [

@@ -49,6 +49,30 @@
         "confidence": "confirmed",
         "date": "2026-10-27",
         "source": "journalctl -k after pactl set-card-profile, 2026-10-27; Pro1-X port repo port/packages/qx1050-voicecall/README.md"
+      },
+      {
+        "title": "Speaker amplifier pops: switch it on after the codec, off before",
+        "general": "An external speaker amplifier modelled as a PGA with PRE_PMU/POST_PMD events is powered while the codec's DAC and output drivers power up and down, and amplifies their transients: a loud pop at every card power cycle (boot, notification sounds, idle suspend, even plugging USB when that plays a sound). Model it as a speaker widget (SND_SOC_DAPM_SPK: powered up last, down first, POST_PMU/PRE_PMD) and give it a few ms after its power-down command before dropping the enable line.",
+        "instance": "Pro1-X AW87339 x2 behind WCD9370 HPH outputs (kernel patch 0019): power-up pop gone; a pop at card teardown during the boot-time card re-registration remains.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
+      },
+      {
+        "title": "Verify audio without ears: mic loopback",
+        "general": "Play a short tone through the speaker while recording the built-in mic and compare the RMS with a quiet recording (PulseAudio suspended around it): a reliable PLAYS/SILENT oracle for headless A/B tests of audio workarounds and driver changes.",
+        "instance": "Pro1-X: noise ~220, tone ~690-710 at HPH volume 8. It showed that the sound card re-registration workaround is still needed on 7.3 (SILENT x3 without it) and that keeping the AW87339 amplifiers off at probe (patch 0022) does not break playback.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (notes/modem-dog-crash.md, notes/gpu-perf.md, kernel patches 0021-0022)"
+      },
+      {
+        "title": "Click at stream stop: make the speaker amplifier a codec on the playback link and switch it off at mute",
+        "general": "At stream stop ASoC first mutes the codec DAIs and stops the CPU/DSP port (hw_free), and only then runs the DAPM power-down; an external speaker amplifier registered as an aux device with a DAPM SPK widget is therefore switched off 20-40 ms after the signal stopped and amplifies the stop as a loud click (at every PulseAudio idle suspend, and at a card re-registration). A gain ramp in the amplifier's own power-down does not help. Move the amplifier from aux-devs into the playback link's codec list, first, with a DAI whose mute_stream switches it off: ASoC mutes codecs in list order. Keep DAPM for switching on, and re-enable on unmute when the path is up. Find the order with temporary pr_info timestamps (q6afe port stop, codec mute, amplifier events) when ftrace is not built in.",
+        "instance": "Pro1-X SM6115: two AW87339 behind WCD9370 HPH outputs, LPASS RX macro, q6afe RX_CODEC_DMA_RX_0. Before: RX mute 85.427, port stop 85.430, amplifiers off 85.448/85.467. After (port kernel patch 0026): amplifiers off 94.740/94.761, RX mute 94.774, port stop 94.778; the click at idle suspend and the boot click are gone (moWerk by ear, 2026-10-29). The codec-side 'dup' noise while a stream is open drops with HPH volume, i.e. it is codec output amplified.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/kernel/patches-7.3/0026-*, commit 0e01317"
       }
     ],
     "sound_server": [
@@ -127,6 +151,38 @@
         "confidence": "confirmed",
         "date": "2026-10-24",
         "source": "SailfishOS/mainline_porting.json audio_pulseaudio.ears_free_test; port log 2026-10-24 00:24-00:45; Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "q6voice calls silent both ways: the codec DMA back ends stall on their first start in the call verb",
+        "general": "If a q6voice call connects but is silent both ways while the voice session opens without errors, check whether the codec DMA back ends actually run: /proc/asound/cardN/pcmXp/sub0/status of the media playback PCM routed to the same back end shows state RUNNING but hw_ptr stuck at 0, and a capture from the same TX back end returns exact zeros (its pointer moves, so only the data shows it). The DSP voice session shares those back ends, so nothing passes. Restarting the PCMs (PulseAudio: pactl suspend-sink/suspend-source 1 then 0) gets them running. Reproduce without a call by switching the card to the voice profile by hand; a test tone moved onto the call sink and a level measurement of the call source split the path in halves without a phone call.",
+        "instance": "Pro1-X 7.3 + SailfishOS 5.2 (PulseAudio 17, UCM verb 'Voice Call', RX_CODEC_DMA_RX_0 / VA_CODEC_DMA_TX_0): stall after every switch to the verb; the helper restarts sink and source once after its keep-alive streams start. Audio both ways since 2026-10-29. Root cause in the kernel or PulseAudio not found; same q6voice code and UCM work on NixOS/sxmo (PipeWire or different open order). The stall recurs on every new sink (earpiece/speaker switch); with the voice session routed (VoiceMMode1 mixers on) the stalled back ends cannot be restarted, so take the voice route off, restart sink and source, route again: about 2 s per switch (qx1050-voicecall 0.1-7, port 8105044).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, commit 9f784e6; moWerk call tests 2026-10-29"
+      },
+      {
+        "title": "Bluetooth headsets in q6voice calls need a DSP-to-PulseAudio bridge",
+        "general": "With q6voice the call audio runs in the DSP straight to the codec back ends and never passes PulseAudio, so a Bluetooth headset gets nothing even when PulseAudio offers its HFP profile. It needs the downlink taken out of the DSP (Qualcomm's in-call record port) into PulseAudio and out over SCO, and the headset mic fed back into the voice uplink (in-call music / voice playback port), plus a policy that switches the headset card to HFP on a call.",
+        "instance": "Pro1-X SailfishOS 5.2, 2026-10-29: earbuds stay on A2DP during calls (handsfree_head_unit available), call stays on the earpiece; end-of-call blip plays on the buds. Not started.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md; moWerk call test 2026-10-29"
+      },
+      {
+        "title": "q6voice call volume: map the call volume onto the codec digital gain",
+        "general": "q6voice call audio runs inside the DSP and never passes a PulseAudio stream, so sink volume and the volume keys do nothing, and the level is whatever the codec gains say (painfully loud on an earpiece at 0 dB digital). Find by ear which codec gain is effective on the path (sweep with a tone in numbered steps): on wcd937x + lpass rx-macro only RX_RXn Digital Volume was audible, EAR_PA Volume and HPHL Volume were not. On SailfishOS the volume keys move module-meego-mainvolume's virtual call stream (a sink input with driver module-meego-mainvolume), not the sink: follow sink volume times that stream's volume and set the digital gain from it. A proper fix would set the DSP voice volume (CVP volume step) instead.",
+        "instance": "Pro1-X: call verb 68 (-16 dB) at 100 %, 68 + 20*log10(volume) down to 24, restored to 84 on leaving the verb; keys verified in a call 2026-10-29 (qx1050-voicecall 0.1-6).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, commit 9f784e6; moWerk call tests 2026-10-29"
+      },
+      {
+        "title": "Test streams in SailfishOS call profiles: tag them into the call group",
+        "general": "With SailfishOS's audio policy a gst/paplay test stream is classified 'player' and routed to the null sink while the card is in a voice-call profile (the tone is never heard; move-sink-input to the call sink works). A recording stream without a call-group property in the voice profile aborted PulseAudio 17 (assertion pa_channels_valid in pa_cvolume_set). Tag test streams with a property that xpolicy.conf puts in the call group. Also: busybox pkill -n and pgrep with '\\|' alternation do not behave like procps; kill test streams by PID.",
+        "instance": "Pro1-X 5.2.0.22: property pro1x.voice=keepalive (xpolicy.conf call group); a stuck 1 kHz probe tone played on long after its test because pkill -n missed it.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, commit 9f784e6; moWerk call tests 2026-10-29"
       }
     ]
   }

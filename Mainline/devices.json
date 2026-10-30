@@ -1,265 +1,265 @@
 {
- "devices": {
-  "note": "Per-device status matrix for mainline ports, newest evidence wins. Each row: title = subsystem; general = status (works / partial / not yet / not started) and what that means; instance = the evidence and its versions; date = the latest evidence. F(x)tec Pro1-X (qx1050, SM6115 / Snapdragon 662) as of 2026-10-27: own kernel 7.3.0-qx1050 (v7.3 plus 16 device commits), SailfishOS 5.2.0.22 (upgraded in place from 5.1.0.11 on 2026-10-27), oFono 2.12.0+git4 with patches 0019 and 0020, PulseAudio 17.0+git2, Mesa 25.1.8, libcamera 0.7.2-4 with AF patches; reference OS NixOS (nyymi609/fxtec-pro1x-nixos, Linux 7.1) on the same unit. 'works' means confirmed by use on the device, not by a multi-day reliability test; no suspend or long-uptime measurements exist yet.",
-  "fxtec_pro1x_qx1050": [
-   {
-    "title": "Upstream kernel support for the board",
-    "general": "partial: SoC and board DTS upstream; keyboard, audio, camera, Bluetooth, battery and vibration are carried as out-of-tree patches.",
-    "instance": "Upstream sm6115-fxtec-pro1x.dts by Dang Huynh: base v6.5, display/GPU/touch/Wi-Fi/USB/Type-C/SD/modem nodes v6.12, latest change 2026-05-19. postmarketOS (renamed Nura on 2026-09-27) has device-fxtec-qx1050 in testing on kernel 6.10. The port's series is triaged in upstreaming.json.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/devices.json fxtec_mainline_2026.pro1x_qx1050, nura_rename; Pro1-X port repo port/kernel/HANDOVER.md"
-   },
-   {
-    "title": "Boot",
-    "general": "works: U-Boot extlinux, one-shot dual boot from the NixOS partition with fallback to NixOS on any crash; not yet standalone.",
-    "instance": "Kernel, DTB, initramfs and firmware still live on or come from the NixOS partition; see boot.json.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/kernel/README.md, port/scripts/sfos-boot-once.sh"
-   },
-   {
-    "title": "Display and backlight",
-    "general": "works: panel, brightness with a proper dark minimum; harmless backlight EINVAL after blanking causes a fade jump.",
-    "instance": "BOE BF060Y8M-AJ0 at 60 Hz (pixel clock patch); 'Failed to write display brightness: -22' once in hours on 7.3; mce dim fade jumps to full once per power-key press.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-26 20:40; Pro1-X port repo port/notes/upstream.md"
-   },
-   {
-    "title": "GPU",
-    "general": "works: hardware GLES 3.2 under Mesa freedreno; throughput below the hybris vendor stack.",
-    "instance": "Adreno 610 (FD610), Mesa 25.1.8, lipstick on eglfs_kms; Benchymark 2.2.0 against hybris on 7.1: memory 0.59, GPU stages 0.15-0.82, CPU about equal; ran again on 5.2 (2026-10-27). UI 20-30 fps with stutter on transitions and lists.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "port log 2026-10-23, 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Touch",
-    "general": "works: multitouch and double-tap-to-wake.",
-    "instance": "Goodix (module, config blob from the firmware loader); double-tap-to-wake reliable on 7.1; probed on 7.3.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "moWerk test round 2026-10-23 19:46; port log 2026-10-26 20:40"
-   },
-   {
-    "title": "Keyboard and slide switch",
-    "general": "works: all keys, slide open/close blanking, keyboard backlight; relies on SailfishOS-only DT changes (Fn as RIGHTALT, inverted slide switch).",
-    "instance": "pro1x-keyboard driver; xkb symbols fxtec_vndr/pro1x (German QWERTZ, Fn legends on level 3); slide switch tlmm 96 inverted for mce; keyboard LED tlmm 103 active-low; an on-device check of every Fn legend was not recorded.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-23, 2026-10-26 20:40; Pro1-X port repo port/README.md"
-   },
-   {
-    "title": "Notification LED",
-    "general": "not yet: the multicolour LED exists but mce does not drive it.",
-    "instance": "rgb:status not driven, 2026-10-23; no later evidence.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "moWerk test round 2026-10-23 19:46"
-   },
-   {
-    "title": "Haptics",
-    "general": "works: UI feedback through ngfd and libngf-qt5-qtfeedback.",
-    "instance": "AW86224 with d2s_gain=7 drv2_lvl=100; 12-effect ffmemless list.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-23 21:05, 2026-10-26 20:40"
-   },
-   {
-    "title": "Wi-Fi",
-    "general": "works: connman with saved networks across boots.",
-    "instance": "ath10k WCN3990 (needs the modem chain), stable MAC from machine-id set before connman starts.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-24, 2026-10-26 20:40"
-   },
-   {
-    "title": "Bluetooth",
-    "general": "partial: works when enabled from boot (pairing, A2DP); dead after a power-down until reboot.",
-    "instance": "WCN3950 on hci_uart_qca: 0xfc00 tx timeout after power-down, regulator refcount warning (kernel item); the SailfishOS toggle blinked forever on 7.1.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-23 21:01, 2026-10-26 20:40; Pro1-X port repo port/notes/upstream.md"
-   },
-   {
-    "title": "Modem registration and SIM",
-    "general": "partial: registers on LTE at boot and the SIM is present in the stack; Settings shows it only on the Mobile network page, no 'SIM cards' page (single slot registered).",
-    "instance": "UIM provisioning activated every boot by qx1050-modem-prep; oFono slot driver patch 0019 exposes one slot.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/patches/ofono/README.md, port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Mobile data",
-    "general": "works: IPv4 data over rmnet, Settings toggle switches it on and off.",
-    "instance": "SailfishOS 5.2.0.22 with oFono patch 0020 (DPM open port, QMAPv4, bind without client-type): ping 3/3 about 40 ms, HTTPS 200 over rmnet_data2 on a clean boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/patches/ofono/README.md, port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Voice calls",
-    "general": "partial: calls connect in both directions; no call audio yet.",
-    "instance": "Signalling through oFono since 2026-10-26; q6voice helper qx1050-voicecall 0.1-4 starts the DSP voice session on hw:0,5, keep-alives classified into the call group, but no audio either way (see audio.json).",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "moWerk call test 2026-10-26; Pro1-X port repo port/packages/qx1050-voicecall/README.md"
-   },
-   {
-    "title": "SMS",
-    "general": "partial: receive works; sending was not recorded as tested.",
-    "instance": "oFono 2.12 with the slot driver, 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/patches/ofono/README.md"
-   },
-   {
-    "title": "Audio playback and microphone",
-    "general": "works: speaker and built-in microphone from cold boot, with a boot-time card re-creation workaround for a silent first probe; the earpiece route switches but playback through it was not separately verified.",
-    "instance": "qx1050-audio-reprobe.service (prime one stream, then re-register snd_soc_sm8250); kernel root cause open; pops at boot and USB plug remain.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-24 02:56, 2026-10-26 20:40"
-   },
-   {
-    "title": "Bluetooth audio",
-    "general": "works: A2DP music playback.",
-    "instance": "Paired and played on 7.3.0-qx1050 with SailfishOS 5.1.0.11.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "moWerk test report 2026-10-26 21:17"
-   },
-   {
-    "title": "Call audio",
-    "general": "not yet.",
-    "instance": "See Voice calls; PulseAudio profile switch to 'Voice Call (Earpiece, Mic)' works.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md"
-   },
-   {
-    "title": "Headset jack detection",
-    "general": "not started: no MBHC in the DT, so no jack input device; headphones are a manual port switch.",
-    "instance": "Headset detection untested; the jack itself was listed as probed on 7.3.",
-    "confidence": "inferred",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/notes/research/research-audio.md; port log 2026-10-26 20:40"
-   },
-   {
-    "title": "Rear camera",
-    "general": "works: photos and video in jolla-camera with autofocus; viewfinder 10-20 fps on the GPU software ISP.",
-    "instance": "IMX582 + DW9800 VCM, libcamera 0.7.2-4 (soft-ISP AF RFC plus own sharpness statistic and tuned scan), GPU debayer since SailfishOS 5.2 (cam 32 fps at 1280x960, 20 fps at 2000x1500); softened VCM ramps reduce the start click; 1984-wide 1080p mode.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "port log 2026-10-25 17:01, 2026-10-26 21:17, 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Front camera",
-    "general": "works: fixed focus, upright and mirrored viewfinder; 1080p video slow because the binned mode is too small.",
-    "instance": "S5K4H7; on the CPU software ISP front video recorded about 7 fps (2026-10-25); not remeasured on the GPU ISP. Intermittent I2C probe timeout seen on 7.1, not on the first 7.3 boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-25 11:52, 15:29, 2026-10-26 20:40"
-   },
-   {
-    "title": "Video recording and hardware codec",
-    "general": "works: H.264 1080p30 through Venus plus AAC in MP4.",
-    "instance": "Venus gen1 driver via qcom,qcm2290-venus, linux-firmware venus.mbn 6.0-00055, gst-plugins-good rebuilt with v4l2-probe, avenc_aac ranked primary; encoder and decoder probed on 7.3.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-25 01:24-02:10, 2026-10-26 20:40"
-   },
-   {
-    "title": "Sensors (accelerometer, gyroscope, magnetometer, light, proximity)",
-    "general": "not yet: userspace built and packaged, never run against the ADSP.",
-    "instance": "SSC service 400 announced by the ADSP; hexagonrpc (PR 27 fork), libssc 0.4.4, protobuf-c and sensorfw-qt5-ssc 0.1-1 built; qx1050-hexagonrpcd.service disabled pending a supervised first run.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/notes/sensors-design.md, port/packages/sensorfw-qt5-ssc/README.md"
-   },
-   {
-    "title": "Battery and charging",
-    "general": "works: level and charging state read correctly; board-specific driver, not an upstream route.",
-    "instance": "PMI632 via pro1x-adc-battery and pro1x-icl.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-26 20:40; Pro1-X port repo port/kernel/HANDOVER.md"
-   },
-   {
-    "title": "USB",
-    "general": "partial: built-in CDC gadget gives network (172.16.42.1) and serial for development; usb-moded (MTP, charging/mode menu) cannot run beside it.",
-    "instance": "policies-setup.service fails at every boot because usb-moded is not on D-Bus; Type-C charging works.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/notes/sfos-5.2-upgrade.md, port/kernel/pro1x.fragment"
-   },
-   {
-    "title": "microSD",
-    "general": "not yet: no card detected.",
-    "instance": "sdhci_msm has its card-detect GPIO but reports no card on 7.1; no later evidence.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 (ground truth)"
-   },
-   {
-    "title": "Torch",
-    "general": "not started: no torch toggle appears; no work done.",
-    "instance": "Observed on SailfishOS on 7.1.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "moWerk test round 2026-10-23 19:46"
-   },
-   {
-    "title": "Lock code and home encryption",
-    "general": "not yet: setting a lock code fails because the directory rootfs has no encrypted home volume.",
-    "instance": "sailfish-device-encryption-community exists on the dontbeevil OBS; not set up.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "Pro1-X port repo port/README.md"
-   },
-   {
-    "title": "RTC",
-    "general": "partial: the clock starts at 1970 until NTP sets it.",
-    "instance": "Observed on the NixOS 7.1 kernel; not rechecked on 7.3.",
-    "confidence": "confirmed",
-    "date": "2026-10-22",
-    "source": "port log 2026-10-22 21:43"
-   },
-   {
-    "title": "GNSS and AGPS",
-    "general": "not started: no positioning work recorded.",
-    "instance": "No evidence about the GNSS path (modem location service, gpsd or geoclue provider) in any port note as of 2026-10-27; native-common ships geoclue-provider-gpsd3.",
-    "confidence": "inferred",
-    "date": "2026-10-27",
-    "source": "absence of evidence in the port notes; native-common file listing 2026-10-23"
-   },
-   {
-    "title": "Suspend, battery drain and long-uptime reliability",
-    "general": "not started: not measured.",
-    "instance": "Longest recorded uptime with a full hardware check: 3 h 44 min on 7.3 (2026-10-26).",
-    "confidence": "inferred",
-    "date": "2026-10-27",
-    "source": "port log 2026-10-26 20:40"
-   }
-  ],
-  "related_devices": [
-   {
-    "title": "F(x)tec Pro1 (qx1000, MSM8998): mainline status",
-    "general": "not started (for a mainline SailfishOS port): upstream has the board DTS without display, panel, GPU or keyboard; those exist only in a stale fork.",
-    "instance": "Upstream msm8998-fxtec-pro1.dts since v5.16 (AngeloGioacchino Del Regno, 2021), no audio codec nodes in msm8998.dtsi. gitlab.com/msm8998-mainline/linux (last commit 2023-02-05, 6.1) adds panel boe,bf060y8m-aj0 (driver upstream since v5.17), a GPU node with a voltage hack, the keyboard via AW9523 plus an out-of-tree gpio-fastmatrix-keyboard (pinctrl-aw9523 upstream since v6.9), haptics. pmaports MR !2984 (2022) closed unmerged; the postmarketOS msm8998 kernel package is stuck at 6.0. Mesa freedreno a5xx gives GLES 3.1. Display, GPU, keyboard and audio would need upstreaming first.",
-    "confidence": "confirmed",
-    "date": "2026-10-20",
-    "source": "SailfishOS/devices.json fxtec_mainline_2026.pro1_qx1000"
-   },
-   {
-    "title": "F(x)tec Pro1-X hybris port (contrast and baseline)",
-    "general": "works as a hybris port: the same phone on the vendor 4.19 kernel with Halium, used as the performance baseline and as a source of adaptation values.",
-    "instance": "piggz's halium-qx1050 (sailfish-on-fxtecpro1), newest image SFOS 5.0.0.62 (2025-04-09), upgradable to 5.1 through OBS nemo:testing:hw:fxtec:halium-qx1050:5.1; Halium 4.19 rework pushed 2026-10-03/04. Needs the stock F(x)tec v2.1.2 base on the phone; DNS on 5.1 needs systemd-resolve in group inet (PARANOID_NETWORK).",
-    "confidence": "confirmed",
-    "date": "2026-10-21",
-    "source": "SailfishOS/devices.json fxtec_pro1x_port"
-   }
-  ]
- }
+  "devices": {
+    "note": "Per-device status matrix for mainline ports, newest evidence wins. Each row: title = subsystem; general = status (works / partial / not yet / not started) and what that means; instance = the evidence and its versions; date = the latest evidence. F(x)tec Pro1-X (qx1050, SM6115 / Snapdragon 662) as of 2026-10-28: own kernel 7.3.0-qx1050 (v7.3 plus 22 device commits), SailfishOS 5.2.0.22 (upgraded in place from 5.1.0.11 on 2026-10-27), oFono 2.12.0+git4 with patches 0019 and 0020, PulseAudio 17.0+git2, Mesa 25.1.8, libcamera 0.7.2-4 with AF patches; reference OS NixOS (nyymi609/fxtec-pro1x-nixos, Linux 7.1) on the same unit. 'works' means confirmed by use on the device, not by a multi-day reliability test; no suspend or long-uptime measurements exist yet.",
+    "fxtec_pro1x_qx1050": [
+      {
+        "title": "Upstream kernel support for the board",
+        "general": "partial: SoC and board DTS upstream; keyboard, audio, camera, Bluetooth, battery and vibration are carried as out-of-tree patches.",
+        "instance": "Upstream sm6115-fxtec-pro1x.dts by Dang Huynh: base v6.5, display/GPU/touch/Wi-Fi/USB/Type-C/SD/modem nodes v6.12, latest change 2026-05-19. postmarketOS (renamed Nura on 2026-09-27) has device-fxtec-qx1050 in testing on kernel 6.10. The port's series is triaged in upstreaming.json.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/devices.json fxtec_mainline_2026.pro1x_qx1050, nura_rename; Pro1-X port repo port/kernel/HANDOVER.md"
+      },
+      {
+        "title": "Boot",
+        "general": "works: own kernel and initramfs next to NixOS (one-shot entry); user session at 14 s, lipstick ready at ~22 s; still booted through NixOS's U-Boot and boot partition",
+        "instance": "SailfishOS 5.2.0.22, kernel 7.3 + 22 patches; session no longer waits for the modem (ofono started by qx1050-modem-prep) or Wi-Fi; libssc no longer blocks sensorfwd. Modem watchdog crash on about every second boot (notes/modem-dog-crash.md).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "Pro1-X port repo port/kernel/README.md, port/scripts/sfos-boot-once.sh"
+      },
+      {
+        "title": "Display and backlight",
+        "general": "works: panel, brightness with a proper dark minimum, clean fade at blank (display off from .disable, patch 0023), double-tap to wake.",
+        "instance": "BOE BF060Y8M-AJ0 at 60 Hz (pixel clock patch); blank flash fixed 2026-10-29; harmless 'Failed to write display brightness: -22' once in hours on 7.3.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "port log 2026-10-26 20:40; Pro1-X port repo port/notes/upstream.md"
+      },
+      {
+        "title": "GPU",
+        "general": "works: Adreno 610 on freedreno; memory-bandwidth votes added (patch 0021)",
+        "instance": "Mesa 25.1.8: Benchymark +25 % Benchy large, +37 % Overdraw, +8 % Shader light with the GFX3D->EBI vote; devfreq 320-950 MHz reaches 950 under load; UBWC 1.0 configured.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-23, 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Touch",
+        "general": "works: multitouch and double-tap-to-wake.",
+        "instance": "Goodix (module, config blob from the firmware loader); double-tap-to-wake reliable on 7.1; probed on 7.3.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "moWerk test round 2026-10-23 19:46; port log 2026-10-26 20:40"
+      },
+      {
+        "title": "Keyboard and slide switch",
+        "general": "works: all keys, slide open/close blanking, keyboard backlight; relies on SailfishOS-only DT changes (Fn as RIGHTALT, inverted slide switch).",
+        "instance": "pro1x-keyboard driver; xkb symbols fxtec_vndr/pro1x (German QWERTZ, Fn legends on level 3); slide switch tlmm 96 inverted for mce; keyboard LED tlmm 103 active-low; an on-device check of every Fn legend was not recorded.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-23, 2026-10-26 20:40; Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "Notification LED",
+        "general": "not yet: the multicolour LED exists but mce does not drive it.",
+        "instance": "rgb:status not driven, 2026-10-23; no later evidence.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "moWerk test round 2026-10-23 19:46"
+      },
+      {
+        "title": "Haptics",
+        "general": "works: UI feedback through ngfd and libngf-qt5-qtfeedback.",
+        "instance": "AW86224 with d2s_gain=7 drv2_lvl=100; 12-effect ffmemless list.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-23 21:05, 2026-10-26 20:40"
+      },
+      {
+        "title": "Wi-Fi",
+        "general": "works: stable MAC derived from machine-id, reconnects after boot",
+        "instance": "qx1050-wlan-mac.service started by udev when wlan0 appears (late, via the modem), then one connman restart; the earlier ExecStartPre wait delayed the whole session.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-24, 2026-10-26 20:40"
+      },
+      {
+        "title": "Bluetooth",
+        "general": "works: A2DP, repeated off/on reconnects",
+        "instance": "Moondrop Space Travel Ultra 2 earbuds, kernel 7.3 (the 7.1 re-power failure is gone).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-23 21:01, 2026-10-26 20:40; Pro1-X port repo port/notes/upstream.md"
+      },
+      {
+        "title": "Modem registration and SIM",
+        "general": "partial: registers on LTE at boot and the SIM is present in the stack; Settings shows it only on the Mobile network page, no 'SIM cards' page (single slot registered).",
+        "instance": "UIM provisioning activated every boot by qx1050-modem-prep; oFono slot driver patch 0019 exposes one slot.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/patches/ofono/README.md, port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Mobile data",
+        "general": "works: IPv4 data over rmnet, Settings toggle switches it on and off.",
+        "instance": "SailfishOS 5.2.0.22 with oFono patch 0020 (DPM open port, QMAPv4, bind without client-type): ping 3/3 about 40 ms, HTTPS 200 over rmnet_data2 on a clean boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/patches/ofono/README.md, port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Voice calls",
+        "general": "works: calls in both directions with audio both ways on the earpiece; volume keys set the call volume.",
+        "instance": "oFono 2.12 signalling; q6voice VoiceMMode1 session from qx1050-voicecall 0.1-6, which restarts the stalling codec DMA back ends and maps the call volume onto the RX digital gain. Speaker and headset in calls, echo cancelling still open (2026-10-29).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md, commit 9f784e6; moWerk call tests 2026-10-29"
+      },
+      {
+        "title": "SMS",
+        "general": "partial: receive works; sending was not recorded as tested.",
+        "instance": "oFono 2.12 with the slot driver, 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/patches/ofono/README.md"
+      },
+      {
+        "title": "Audio playback and microphone",
+        "general": "works: speaker and mic; earpiece and headphone routes configured, not confirmed",
+        "instance": "Amplifier pops: power-up pop fixed (patch 0019 speaker widget, 0022 off at probe); one pop at boot from the sound card re-registration workaround, still needed on 7.3 (mic loopback: SILENT without it).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-24 02:56, 2026-10-26 20:40"
+      },
+      {
+        "title": "Bluetooth audio",
+        "general": "works",
+        "instance": "A2DP to Moondrop Space Travel Ultra 2.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "moWerk test report 2026-10-26 21:17"
+      },
+      {
+        "title": "Call audio",
+        "general": "works on earpiece and speaker, switch about 2 s, volume keys (2026-10-29); Bluetooth headsets and wired headset in calls not yet, no echo canceller.",
+        "instance": "See Voice calls and audio.json (back end stall, digital gain call volume).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/packages/qx1050-voicecall/README.md"
+      },
+      {
+        "title": "Headset jack detection",
+        "general": "not started: no MBHC in the DT, so no jack input device; headphones are a manual port switch.",
+        "instance": "Headset detection untested; the jack itself was listed as probed on 7.3.",
+        "confidence": "inferred",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/notes/research/research-audio.md; port log 2026-10-26 20:40"
+      },
+      {
+        "title": "Rear camera",
+        "general": "works: photos and video in jolla-camera with autofocus; viewfinder 10-20 fps on the GPU software ISP.",
+        "instance": "IMX582 + DW9800 VCM, libcamera 0.7.2-4 (soft-ISP AF RFC plus own sharpness statistic and tuned scan), GPU debayer since SailfishOS 5.2 (cam 32 fps at 1280x960, 20 fps at 2000x1500); softened VCM ramps reduce the start click; 1984-wide 1080p mode.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-25 17:01, 2026-10-26 21:17, 2026-10-27; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Front camera",
+        "general": "works: fixed focus, upright and mirrored viewfinder; 1080p video slow because the binned mode is too small.",
+        "instance": "S5K4H7; on the CPU software ISP front video recorded about 7 fps (2026-10-25); not remeasured on the GPU ISP. Intermittent I2C probe timeout seen on 7.1, not on the first 7.3 boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 11:52, 15:29, 2026-10-26 20:40"
+      },
+      {
+        "title": "Video recording and hardware codec",
+        "general": "works: H.264 1080p30 through Venus plus AAC in MP4.",
+        "instance": "Venus gen1 driver via qcom,qcm2290-venus, linux-firmware venus.mbn 6.0-00055, gst-plugins-good rebuilt with v4l2-probe, avenc_aac ranked primary; encoder and decoder probed on 7.3.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-25 01:24-02:10, 2026-10-26 20:40"
+      },
+      {
+        "title": "Sensors (accelerometer, gyroscope, magnetometer, light, proximity)",
+        "general": "works from boot (gyroscope untested)",
+        "instance": "hexagonrpcd + libssc 0.4.4-2 + sensorfw-qt5-ssc adaptors, Sensors.conf and hw-settings.ini; identity transformation matrix; auto-rotation, tilt apps, auto brightness, proximity in mce.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "Pro1-X port repo port/notes/sensors-design.md, port/packages/sensorfw-qt5-ssc/README.md"
+      },
+      {
+        "title": "Battery and charging",
+        "general": "works: charge limit in Settings, Not charging status at the limit, cable notification",
+        "instance": "pro1x-charger-icl patches 0017 (charging_enabled for mce) and 0018 (usb power supply), 0020 (battery follows usb at once); mce waits for the control file at boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-26 20:40; Pro1-X port repo port/kernel/HANDOVER.md"
+      },
+      {
+        "title": "USB",
+        "general": "works: usb-moded on configfs (charging only, developer mode, MTP)",
+        "instance": "g_cdc as module, CONFIG_USB_CONFIGFS=y, gadget g1 prepared before usb-moded (rndis.usb0 named rndis0, ffs.mtp); host sees 2931:0a07 MTP.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "Pro1-X port repo port/notes/sfos-5.2-upgrade.md, port/kernel/pro1x.fragment"
+      },
+      {
+        "title": "microSD",
+        "general": "works",
+        "instance": "vfat card detected and shown in Settings > Storage.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-23 (ground truth)"
+      },
+      {
+        "title": "Torch",
+        "general": "works: top-menu flashlight toggle via the sysfs-flashlight provider (PMI632 white flash LED in torch mode); camera flash not yet.",
+        "instance": "2026-10-29: both flash channels (white:flash-0, amber:flash-1) light via sysfs brightness; Jolla's toggle + port package sysfs-flashlight 0.1.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "moWerk test round 2026-10-23 19:46"
+      },
+      {
+        "title": "Lock code and home encryption",
+        "general": "not yet: setting a lock code fails because the directory rootfs has no encrypted home volume.",
+        "instance": "sailfish-device-encryption-community exists on the dontbeevil OBS; not set up.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "RTC",
+        "general": "works for alarms: the phone powers on at a Clock alarm from power-off",
+        "instance": "PMIC RTC reads 1970 and cannot be set (TrustZone, EPERM); dsme programs alarms relative to it. Verified 2026-10-28 unplugged: switched on and rang.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "port log 2026-10-22 21:43"
+      },
+      {
+        "title": "GNSS and AGPS",
+        "general": "started: the modem GNSS engine is reachable and streams; nothing feeds geoclue yet.",
+        "instance": "Pro1-X 2026-10-30: QMI LOC (service 16) answers over QRTR, 1 Hz NMEA, position and SV-info indications from a one-process client; no fix indoors. Plan in notes/gnss.md: gpsd route first, native geoclue provider later; AGPS by XTRA, time and position injection, SUPL later.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline notes/modem-dog-crash.md, notes/gnss.md, scripts/qmi-loc-probe.py (2026-10-30)"
+      },
+      {
+        "title": "Suspend, battery drain and long-uptime reliability",
+        "general": "not started: not measured.",
+        "instance": "Longest recorded uptime with a full hardware check: 3 h 44 min on 7.3 (2026-10-26).",
+        "confidence": "inferred",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-26 20:40"
+      }
+    ],
+    "related_devices": [
+      {
+        "title": "F(x)tec Pro1 (qx1000, MSM8998): mainline status",
+        "general": "not started (for a mainline SailfishOS port): upstream has the board DTS without display, panel, GPU or keyboard; those exist only in a stale fork.",
+        "instance": "Upstream msm8998-fxtec-pro1.dts since v5.16 (AngeloGioacchino Del Regno, 2021), no audio codec nodes in msm8998.dtsi. gitlab.com/msm8998-mainline/linux (last commit 2023-02-05, 6.1) adds panel boe,bf060y8m-aj0 (driver upstream since v5.17), a GPU node with a voltage hack, the keyboard via AW9523 plus an out-of-tree gpio-fastmatrix-keyboard (pinctrl-aw9523 upstream since v6.9), haptics. pmaports MR !2984 (2022) closed unmerged; the postmarketOS msm8998 kernel package is stuck at 6.0. Mesa freedreno a5xx gives GLES 3.1. Display, GPU, keyboard and audio would need upstreaming first.",
+        "confidence": "confirmed",
+        "date": "2026-10-20",
+        "source": "SailfishOS/devices.json fxtec_mainline_2026.pro1_qx1000"
+      },
+      {
+        "title": "F(x)tec Pro1-X hybris port (contrast and baseline)",
+        "general": "works as a hybris port: the same phone on the vendor 4.19 kernel with Halium, used as the performance baseline and as a source of adaptation values.",
+        "instance": "piggz's halium-qx1050 (sailfish-on-fxtecpro1), newest image SFOS 5.0.0.62 (2025-04-09), upgradable to 5.1 through OBS nemo:testing:hw:fxtec:halium-qx1050:5.1; Halium 4.19 rework pushed 2026-10-03/04. Needs the stock F(x)tec v2.1.2 base on the phone; DNS on 5.1 needs systemd-resolve in group inet (PARANOID_NETWORK).",
+        "confidence": "confirmed",
+        "date": "2026-10-21",
+        "source": "SailfishOS/devices.json fxtec_pro1x_port"
+      }
+    ]
+  }
 }

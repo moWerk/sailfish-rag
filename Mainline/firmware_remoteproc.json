@@ -1,97 +1,123 @@
 {
- "firmware_remoteproc": {
-  "note": "Firmware files for a mainline Qualcomm phone and the remoteprocs (modem, ADSP, CDSP) with their userspace helpers (rmtfs, tqftpserv, qrtr). Instance: F(x)tec Pro1-X (SM6115), firmware taken from the NixOS port of the same phone (device-signed blobs under qcom/sm6115/Fxtec/QX1050) plus linux-firmware's Venus image. State as of 2026-10-27: modem, ADSP and CDSP boot on every SailfishOS boot with rmtfs read-only and tqftpserv; firmware still comes from the NixOS package, and the licence for a published firmware RPM is an open question.",
-  "firmware_files": [
-   {
-    "title": "Ship the firmware subset the working reference OS actually loads",
-    "general": "Take the firmware set from a working mainline OS on the same device: read its dmesg/journal for the files requested and the DT firmware-name properties, and ship only that subset. Device-signed modem and DSP blobs live in a per-device directory named by firmware-name.",
-    "instance": "Pro1-X 2026-10-23: NixOS firmware trimmed to 116 MB: qcom/sm6115/Fxtec/QX1050 (device-signed modem, adsp, cdsp and others), qcom/a6xx GPU files, qcom/qcm2290 and qcom/qrb4210 shared blobs, ath10k/WCN3990, qca/ Bluetooth (cmbtfw12). Modem, ADSP and CDSP booted on the first SailfishOS boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 10:28 (extraction), 12:22 (remoteprocs running on SailfishOS)"
-   },
-   {
-    "title": "Check whether the rootfs is usr-merged before copying firmware, modules and udev rules",
-    "general": "The kernel firmware loader searches /lib/firmware, and udev and modprobe paths follow the distro layout. On a distro that is not usr-merged, /lib is a real directory: firmware, modules and udev rules must go there, and a rule placed under /usr/lib/udev is ignored.",
-    "instance": "SailfishOS 5.1: /lib is a real directory; firmware in /lib/firmware, modules in /lib/modules/<ver>, udev rules in /lib/udev/rules.d (a rule in /usr/lib/udev was ignored).",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 10:42 (rootfs layout), 13:56 (udev rule path fix)"
-   },
-   {
-    "title": "Vendor firmware may be older than the mainline driver accepts; linux-firmware's image can load",
-    "general": "A mainline driver can enforce a minimum firmware version that the vendor-partition blob does not meet. linux-firmware's generic signed image may pass the device's signature check on retail units (same signing root). Test it with a bind mount first (method.json), then remove the board's firmware-name override so the driver's default path is used, and ship the blob with its licence file in the rootfs.",
-    "instance": "Pro1-X SM6115 Venus: the driver requires firmware >= 6.0.55 (the encoder needs secure buffers below 6.0.54); the F(x)tec image VIDEO.VE.6.0-00049 fails with 'Firmware v6.0.49 < v6.0.55' (-EINVAL). linux-firmware qcom/venus-6.0/venus.mbn 6.0-00055 (linux-firmware commit 8ecf764788f8, WHENCE 'Redistributable. See LICENSE.qcom') probes; &venus board node without firmware-name; fetch-venus-fw.sh pins the sha256 and stage2-device.sh installs it.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "SailfishOS/mainline_porting.json camera_jolla_camera.venus_sm6115; dmesg 2026-10-25 01:24-02:10; Pro1-X port repo port/scripts/fetch-venus-fw.sh, port/notes/upstream.md"
-   },
-   {
-    "title": "Firmware requested before the rootfs is mounted produces early-boot errors",
-    "general": "A built-in driver that requests firmware before the root filesystem is available logs a failure; the device may still come up once a later request finds the file. Put that firmware into the initramfs or build the driver as a module if the message matters.",
-    "instance": "Pro1-X 7.3.0-qx1050, 2026-10-26: an a630_sqe.fw message in early boot; the GPU still rendered. Not compared with 7.1, cause not investigated.",
-    "confidence": "reported",
-    "date": "2026-10-26",
-    "source": "boot check summary 2026-10-26"
-   },
-   {
-    "title": "Decide the firmware redistribution licence before publishing a firmware package",
-    "general": "Vendor modem, DSP, Wi-Fi and Bluetooth blobs and community-collected sensor data need a licence decision before a firmware package can be published; linux-firmware blobs come with their licence file (LICENSE.qcom). Where variants of a device share one DT but need different firmware, loading firmware from the stock partitions at runtime avoids redistribution altogether.",
-    "instance": "Pro1-X: open question F.3 in the packaging research, including the NixOS port's proprietary ADSP sensor blob.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "Pro1-X port repo port/notes/research/research-packaging.md; https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/ (Nikita Travkin, load from stock partitions, reported)"
-   }
-  ],
-  "remoteprocs_and_services": [
-   {
-    "title": "Only rmtfs, tqftpserv and hexagonrpcd are still userspace daemons",
-    "general": "The QRTR name service (net/qrtr/ns.c) and pd-mapper (drivers/soc/qcom/qcom_pd_mapper.c) moved into the kernel; the qrtr repository now ships only qrtr-cfg and qrtr-lookup. Do not also run the old userspace pd-mapper: it misses firmware mounted late. Older bring-up guides (2021) still list four daemons. rmtfs started with -s publishes its service and then starts the modem remoteproc itself, so the kernel must not auto-boot the modem in that setup; -r discards the modem's NV writes.",
-    "instance": "Pro1-X on Linux 7.x runs rmtfs and tqftpserv as units; the modem came up without a userspace pd-mapper.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "github.com/linux-msm/qrtr, github.com/linux-msm/rmtfs (README, unit, udev rule); kernel sources named"
-   },
-   {
-    "title": "A mainline Qualcomm phone needs the linux-msm userspace trio",
-    "general": "Remoteprocs need qrtr (tools and the QRTR name service), rmtfs (serves the modem's EFS partitions from shared memory) and tqftpserv (serves firmware files to the DSPs over QRTR TFTP). Distros for phones may not ship them; build them from the linux-msm sources (build details in packaging.json).",
-    "instance": "Pro1-X: SailfishOS repos and native-common do not ship them; port/packages/{qrtr,rmtfs,tqftpserv} built in the aarch64 SDK target; stage2 enables rmtfs.service and tqftpserv.service and masks rmtfs-dir.service.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "Pro1-X port repo port/README.md, port/scripts/stage2-device.sh, port/notes/research/research-packaging.md"
-   },
-   {
-    "title": "Run rmtfs read-only and let it wait for the shared-memory node",
-    "general": "Run rmtfs with -r so the modem EFS partitions (modemst1/2, fsg) are never written. Its unit condition fails if /dev/qcom_rmtfs_mem1 does not exist yet early in boot; clear ConditionPathExists, wait for the node in ExecStartPre (up to about 180 s) and drop the start limit, instead of letting the unit be skipped.",
-    "instance": "Pro1-X: NixOS runs rmtfs -r -P -s (-r = read_only, confirmed in the linux-msm/rmtfs source); SailfishOS drop-in rmtfs.service.d/10-qx1050.conf. Modem MPSS.HA.1.1 booted and rmtfs/tqftpserv were active on the first boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "Pro1-X port repo port/droid-config-qx1050/sparse/etc/systemd/system/rmtfs.service.d/10-qx1050.conf, port/notes/research/research-modem.md; journal 2026-10-23 12:22"
-   },
-   {
-    "title": "tqftpserv maps DSP file requests onto the firmware-name directory",
-    "general": "The modem requests /readonly/firmware/image/... and /readwrite/... paths; tqftpserv maps read-only requests under /lib/firmware using the remoteproc's DT firmware-name directory (and .zst variants) and read-write requests to /tmp/tqftpserv/. Put device firmware where firmware-name points.",
-    "instance": "tqftpserv upstream README (Fairphone 5 example), read for the Pro1-X.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "tqftpserv upstream README.md (Pro1-X port repo port/packages/tqftpserv/upstream/README.md)"
-   },
-   {
-    "title": "Wi-Fi on WCN3990-class chips depends on the modem chain",
-    "general": "On SM6115-class SoCs the WCN3990 Wi-Fi (ath10k_snoc) only comes up after the modem remoteproc, rmtfs and tqftpserv run; if the modem chain is down, Wi-Fi is down too. Debug Wi-Fi absence from the modem side first.",
-    "instance": "Pro1-X 7.1: wlan0 appears once the modem firmware loads; on the first SailfishOS boot with the qrtr/rmtfs/tqftpserv packages Wi-Fi worked through connman.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-22 21:43 (NixOS first look), 2026-10-23 12:22 (SailfishOS)"
-   },
-   {
-    "title": "The remoteproc recovery setting is a safety switch for DSP experiments",
-    "general": "/sys/class/remoteproc/*/recovery decides whether a crashed DSP restarts. A client crashing the DSP in a loop with recovery enabled can freeze the phone; with recovery disabled a crash leaves that DSP (and everything on it, such as audio on the ADSP) down until reboot. Choose per experiment and check the current default first.",
-    "instance": "Pro1-X SailfishOS 5.2: recovery enabled on all three DSPs by default; qx1050-hexagonrpcd-prepare.sh sets adsp recovery=disabled before the sensor daemon starts (the NixOS README lists the same hazard). Supervised first run: sensors.json.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-hexagonrpcd-prepare.sh, port/notes/sensors-design.md"
-   }
-  ]
- }
+  "firmware_remoteproc": {
+    "note": "Firmware files for a mainline Qualcomm phone and the remoteprocs (modem, ADSP, CDSP) with their userspace helpers (rmtfs, tqftpserv, qrtr). Instance: F(x)tec Pro1-X (SM6115), firmware taken from the NixOS port of the same phone (device-signed blobs under qcom/sm6115/Fxtec/QX1050) plus linux-firmware's Venus image. State as of 2026-10-27: modem, ADSP and CDSP boot on every SailfishOS boot with rmtfs read-only and tqftpserv; firmware still comes from the NixOS package, and the licence for a published firmware RPM is an open question.",
+    "firmware_files": [
+      {
+        "title": "Ship the firmware subset the working reference OS actually loads",
+        "general": "Take the firmware set from a working mainline OS on the same device: read its dmesg/journal for the files requested and the DT firmware-name properties, and ship only that subset. Device-signed modem and DSP blobs live in a per-device directory named by firmware-name.",
+        "instance": "Pro1-X 2026-10-23: NixOS firmware trimmed to 116 MB: qcom/sm6115/Fxtec/QX1050 (device-signed modem, adsp, cdsp and others), qcom/a6xx GPU files, qcom/qcm2290 and qcom/qrb4210 shared blobs, ath10k/WCN3990, qca/ Bluetooth (cmbtfw12). Modem, ADSP and CDSP booted on the first SailfishOS boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 10:28 (extraction), 12:22 (remoteprocs running on SailfishOS)"
+      },
+      {
+        "title": "Check whether the rootfs is usr-merged before copying firmware, modules and udev rules",
+        "general": "The kernel firmware loader searches /lib/firmware, and udev and modprobe paths follow the distro layout. On a distro that is not usr-merged, /lib is a real directory: firmware, modules and udev rules must go there, and a rule placed under /usr/lib/udev is ignored.",
+        "instance": "SailfishOS 5.1: /lib is a real directory; firmware in /lib/firmware, modules in /lib/modules/<ver>, udev rules in /lib/udev/rules.d (a rule in /usr/lib/udev was ignored).",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 10:42 (rootfs layout), 13:56 (udev rule path fix)"
+      },
+      {
+        "title": "Vendor firmware may be older than the mainline driver accepts; linux-firmware's image can load",
+        "general": "A mainline driver can enforce a minimum firmware version that the vendor-partition blob does not meet. linux-firmware's generic signed image may pass the device's signature check on retail units (same signing root). Test it with a bind mount first (method.json), then remove the board's firmware-name override so the driver's default path is used, and ship the blob with its licence file in the rootfs.",
+        "instance": "Pro1-X SM6115 Venus: the driver requires firmware >= 6.0.55 (the encoder needs secure buffers below 6.0.54); the F(x)tec image VIDEO.VE.6.0-00049 fails with 'Firmware v6.0.49 < v6.0.55' (-EINVAL). linux-firmware qcom/venus-6.0/venus.mbn 6.0-00055 (linux-firmware commit 8ecf764788f8, WHENCE 'Redistributable. See LICENSE.qcom') probes; &venus board node without firmware-name; fetch-venus-fw.sh pins the sha256 and stage2-device.sh installs it.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "SailfishOS/mainline_porting.json camera_jolla_camera.venus_sm6115; dmesg 2026-10-25 01:24-02:10; Pro1-X port repo port/scripts/fetch-venus-fw.sh, port/notes/upstream.md"
+      },
+      {
+        "title": "Firmware requested before the rootfs is mounted produces early-boot errors",
+        "general": "A built-in driver that requests firmware before the root filesystem is available logs a failure; the device may still come up once a later request finds the file. Put that firmware into the initramfs or build the driver as a module if the message matters.",
+        "instance": "Pro1-X 7.3.0-qx1050, 2026-10-26: an a630_sqe.fw message in early boot; the GPU still rendered. Not compared with 7.1, cause not investigated.",
+        "confidence": "reported",
+        "date": "2026-10-26",
+        "source": "boot check summary 2026-10-26"
+      },
+      {
+        "title": "Decide the firmware redistribution licence before publishing a firmware package",
+        "general": "Vendor modem, DSP, Wi-Fi and Bluetooth blobs and community-collected sensor data need a licence decision before a firmware package can be published; linux-firmware blobs come with their licence file (LICENSE.qcom). Where variants of a device share one DT but need different firmware, loading firmware from the stock partitions at runtime avoids redistribution altogether.",
+        "instance": "Pro1-X: open question F.3 in the packaging research, including the NixOS port's proprietary ADSP sensor blob.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/notes/research/research-packaging.md; https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/ (Nikita Travkin, load from stock partitions, reported)"
+      }
+    ],
+    "remoteprocs_and_services": [
+      {
+        "title": "Only rmtfs, tqftpserv and hexagonrpcd are still userspace daemons",
+        "general": "The QRTR name service (net/qrtr/ns.c) and pd-mapper (drivers/soc/qcom/qcom_pd_mapper.c) moved into the kernel; the qrtr repository now ships only qrtr-cfg and qrtr-lookup. Do not also run the old userspace pd-mapper: it misses firmware mounted late. Older bring-up guides (2021) still list four daemons. rmtfs started with -s publishes its service and then starts the modem remoteproc itself, so the kernel must not auto-boot the modem in that setup; -r discards the modem's NV writes.",
+        "instance": "Pro1-X on Linux 7.x runs rmtfs and tqftpserv as units; the modem came up without a userspace pd-mapper.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "github.com/linux-msm/qrtr, github.com/linux-msm/rmtfs (README, unit, udev rule); kernel sources named"
+      },
+      {
+        "title": "A mainline Qualcomm phone needs the linux-msm userspace trio",
+        "general": "Remoteprocs need qrtr (tools and the QRTR name service), rmtfs (serves the modem's EFS partitions from shared memory) and tqftpserv (serves firmware files to the DSPs over QRTR TFTP). Distros for phones may not ship them; build them from the linux-msm sources (build details in packaging.json).",
+        "instance": "Pro1-X: SailfishOS repos and native-common do not ship them; port/packages/{qrtr,rmtfs,tqftpserv} built in the aarch64 SDK target; stage2 enables rmtfs.service and tqftpserv.service and masks rmtfs-dir.service.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/README.md, port/scripts/stage2-device.sh, port/notes/research/research-packaging.md"
+      },
+      {
+        "title": "Run rmtfs read-only and let it wait for the shared-memory node",
+        "general": "Run rmtfs with -r so the modem EFS partitions (modemst1/2, fsg) are never written. Its unit condition fails if /dev/qcom_rmtfs_mem1 does not exist yet early in boot; clear ConditionPathExists, wait for the node in ExecStartPre (up to about 180 s) and drop the start limit, instead of letting the unit be skipped.",
+        "instance": "Pro1-X: NixOS runs rmtfs -r -P -s (-r = read_only, confirmed in the linux-msm/rmtfs source); SailfishOS drop-in rmtfs.service.d/10-qx1050.conf. Modem MPSS.HA.1.1 booted and rmtfs/tqftpserv were active on the first boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/droid-config-qx1050/sparse/etc/systemd/system/rmtfs.service.d/10-qx1050.conf, port/notes/research/research-modem.md; journal 2026-10-23 12:22"
+      },
+      {
+        "title": "tqftpserv maps DSP file requests onto the firmware-name directory",
+        "general": "The modem requests /readonly/firmware/image/... and /readwrite/... paths; tqftpserv maps read-only requests under /lib/firmware using the remoteproc's DT firmware-name directory (and .zst variants) and read-write requests to /tmp/tqftpserv/. Put device firmware where firmware-name points.",
+        "instance": "tqftpserv upstream README (Fairphone 5 example), read for the Pro1-X.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "tqftpserv upstream README.md (Pro1-X port repo port/packages/tqftpserv/upstream/README.md)"
+      },
+      {
+        "title": "Wi-Fi on WCN3990-class chips depends on the modem chain",
+        "general": "On SM6115-class SoCs the WCN3990 Wi-Fi (ath10k_snoc) only comes up after the modem remoteproc, rmtfs and tqftpserv run; if the modem chain is down, Wi-Fi is down too. Debug Wi-Fi absence from the modem side first.",
+        "instance": "Pro1-X 7.1: wlan0 appears once the modem firmware loads; on the first SailfishOS boot with the qrtr/rmtfs/tqftpserv packages Wi-Fi worked through connman.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-22 21:43 (NixOS first look), 2026-10-23 12:22 (SailfishOS)"
+      },
+      {
+        "title": "The remoteproc recovery setting is a safety switch for DSP experiments",
+        "general": "/sys/class/remoteproc/*/recovery decides whether a crashed DSP restarts. A client crashing the DSP in a loop with recovery enabled can freeze the phone; with recovery disabled a crash leaves that DSP (and everything on it, such as audio on the ADSP) down until reboot. Choose per experiment and check the current default first.",
+        "instance": "Pro1-X SailfishOS 5.2: recovery enabled on all three DSPs by default; qx1050-hexagonrpcd-prepare.sh sets adsp recovery=disabled before the sensor daemon starts (the NixOS README lists the same hazard). Supervised first run: sensors.json.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-hexagonrpcd-prepare.sh, port/notes/sensors-design.md"
+      },
+      {
+        "title": "The modem needs its MCFG files over TFTP, or GNSS hears nothing",
+        "general": "At every start the modem requests /readonly/firmware/image/modem_pr/mcfg/configs/mcfg_hw/mbn_hw.dig and mcfg_sw/mbn_sw.dig over QRTR TFTP. tqftpserv maps them next to the remoteproc firmware file; missing, it logs 'unable to open ..., reject' and the modem runs on defaults: calls and data work, GNSS tracks no satellite. Android mounts the modem partition (vfat) at /vendor/firmware_mnt; on mainline mount it read-only and bind image/modem_pr next to modem.mbn before tqftpserv starts. The mount unit must wait for the partition link: ordered too early it failed with mount exit 32 at 2 s and the modem ran without MCFG again.",
+        "instance": "Pro1-X: 0 satellites in 50 min under open sky before, satellites within 60 s after; journalctl -u tqftpserv shows no reject since.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline commits 47ce05e, 87b1d56 (qx1050-modem-pr.service)"
+      },
+      {
+        "title": "s2idle crashes the ADSP sensor process at resume (fastrpc resend)",
+        "general": "When the freezer interrupts hexagonrpcd's listener invocation with -ERESTARTSYS, mainline fastrpc resends the restarted call; the duplicate crashes the ADSP sensor PD in its frpc_dsp thread right after 'Restarting tasks' (PDM: service 'sensor_process' crash: EX:sensor_process:0x1:frpc_dsp:0x..:PC=...). With ADSP recovery disabled the ADSP stays down: no sensors, no audio until reboot. Fix from the Lenovo TB-J606L port (haltia-de, issue #23): fastrpc resumes the interrupted context instead of resending (their patch 0016, as downstream adsprpc context_restore_interrupted), takes a 500 ms wakeup event per DSP message (0015), and the downstream SMP2P sleepstate driver plus sleepstate/sleepstate_see DT entries tell the sensor hub the AP sleeps (0013). Sensors streaming during sleep wake the system every 1-2 s; stop them before sleep.",
+        "instance": "Pro1-X 7.3: one rtcwake 20 s s2idle; suspend and resume clean, Wi-Fi reconnected after 5 s, ADSP crashed at resume with PC 0xb2022ad0 (J606L: 0xb2021ad0). Patches taken as w-73 3c99bd996, 9e5e556a2, 4b8f72679 (one line of 0016 placed by hand); not yet booted.",
+        "confidence": "confirmed crash; fix confirmed on the J606L, pending here",
+        "date": "2026-10-30",
+        "source": "github.com/haltia-de/device-lenovo-tb-j606l issue #23, commit 9838554; github.com/moWerk/sailfishos-pro1x-mainline"
+      }
+    ],
+    "rtc": [
+      {
+        "title": "PMIC RTC: power-off alarms work although the RTC reads 1970",
+        "general": "The Qualcomm PMIC RTC keeps its own count (1970 on SM6115) and Linux cannot set it: TrustZone rejects the write (RTC_SET_TIME -> EPERM, also with allow-set-time). That does not matter for wake-up: the alarm registers survive reboots, and a power-off alarm powers the phone on, as long as the alarm is programmed relative to the RTC's own clock. Test with a real alarm and the device unplugged: hand-written wakealarm values are overwritten by the OS at shutdown, and USB power powers the device straight back on.",
+        "instance": "Pro1-X 7.3 SailfishOS 5.2, 2026-10-28: Clock alarm 20:55, powered off unplugged, the phone switched itself on and the alarm UI rang 55 s into the boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
+      }
+    ]
+  }
 }

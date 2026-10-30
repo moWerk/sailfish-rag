@@ -1,301 +1,333 @@
 {
- "method": {
-  "note": "How to work on a mainline phone port: where the answers usually already are, which reference stacks to diff against, how faults were localised, and the working habits that kept the port moving. Built from the F(x)tec Pro1-X (SM6115) SailfishOS port on its own mainline kernel (Linux 7.1, then 7.3), 2026-10-21 to 2026-10-27, plus general mainlining guides (kernel documentation, Bootlin, FOSDEM talks; confidence reported, URL as source; full list in references.json). State: the method has been applied to every subsystem from first boot to mobile data; the strongest single lesson is that nearly every blocker already had a worked answer somewhere, and that diffing against a working stack on the same hardware beats guessing.",
-  "research_first": [
-   {
-    "title": "Research existing ports and upstream before implementing anything",
-    "general": "Before writing configs, drivers or algorithms for a subsystem, send read-only research at every place that may already have solved it: the same device on other mainline distros, the only maintained mainline family of the target OS, the hybris/vendor config of the same device, the target OS's own sources and issue trackers, and upstream patchwork, mailing lists and developer branches. Each research report should label confirmed versus inferred and end with a least-effort recommendation; plan only after reading them. Writing from scratch first is the typical failure of an LLM-driven port: it reinvents what exists and needs several blind fixes per item.",
-    "instance": "Pro1-X, 2026-10-23: vibration (ngfd), mce backlight, PulseAudio/ohm, modem and packaging were first written from scratch and vibration alone cost three blind fixes; eight research reports (audio, modem, keyboard, packaging, sensors/camera, vibration, camera sink, camera switching) then found every first-day blocker already solved in the NixOS port of the same phone (nyymi609/fxtec-pro1x-nixos), sailfish-on-dontbeevil (PinePhone) or postmarketOS msm-modem. 2026-10-24: research found the qtmultimedia source that actually ships and the viewfinder sink path. 2026-10-25: an upstream search found a libcamera soft-ISP autofocus RFC posted four days earlier, so the work became a backport plus the one missing piece (a sharpness statistic) and a real-device test report.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "SailfishOS/mainline_porting.json method.research_first; Pro1-X port repo port/notes/research/*.md, port/README.md; port log 2026-10-23 19:00-19:29, 2026-10-24, 2026-10-25"
-   },
-   {
-    "title": "List every published mainline port of the target OS and its shared middleware repo",
-    "general": "Before designing, enumerate all mainline ports of the target OS (active or not), the device each targets, where binaries and sources live, and the shared middleware repository native ports draw from. Most components already exist in one of them; the list also tells you whom to ask.",
-    "instance": "SailfishOS on mainline, survey 2026-10-22: sailfish-on-dontbeevil by piggz (PinePhone, PinePhone Pro, PineTab2; the only maintained family); VerdandiTeam droid-config-victara + victara-mainline-linux branch victara-7.3 (Moto X 2014, Mister_Magister, GPU enabled 2026-10-14 on the qcom_iommu series, still has hybris leftovers); birdzhang Xiaomi Pad 5 nabu (SM8150) on OBS home:birdzhang:nabu_mainline (binaries only, kernel-adaptation-nabu 6.14.11); affe_null Jolla C2 (UMS9230) mainline on OBS home:affe_null:c2-mainlining, boots from SD. Shared middleware: OBS nemo:devel:hw:native-common (mesa 25.1.8, wayland 1.24, libcamera 0.4, libqmi 1.34, libqrtr-glib, qt5-qtwayland, qtscenegraph-adaptation, plymouth-lite, geoclue-provider-gpsd3), sources on github.com/sailfishos-native.",
-    "confidence": "confirmed",
-    "date": "2026-10-22",
-    "source": "research subagent report 2026-10-22 (repo and OBS listings read); native-common file listing checked 2026-10-23"
-   },
-   {
-    "title": "Another distro's mainline port of the same device is the hardware source of truth",
-    "general": "When the phone already runs on mainline under another distro, take the hardware side from it: kernel patch series, firmware set, UCM profile, sensor registry data, helper scripts and module parameters. The target OS only supplies the userspace shape, so the job becomes a translation of the integration layer (PipeWire to PulseAudio, ModemManager to oFono, iio-sensor-proxy to sensorfw, keyd to xkb) rather than new hardware work.",
-    "instance": "Pro1-X: fxtec-pro1x-nixos (nyymi609) supplied the kernel series, firmware, UCM, haptics driver and its parameters, hexagonfs sensor data and voicepcm.c; sailfish-on-dontbeevil supplied the SailfishOS userspace template.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "Pro1-X port repo port/README.md, port/notes/research/research-audio.md"
-   },
-   {
-    "title": "Check how much of the SoC is already upstream before planning",
-    "general": "Many Qualcomm SoCs since about 2018 already have a SoC dtsi upstream, and current flagships may be supported from launch day by the vendor's landing team. Measure what exists with git (boards and commits per tag, grep for the SoC compatible) instead of assuming a from-zero bring-up; the plan for an SoC with a dtsi is board enablement, not SoC enablement.",
-    "instance": "Pro1-X: SM6115 had an upstream dtsi and an upstream board DTS (sm6115-fxtec-pro1x.dts by Dang Huynh, display/GPU/touch/Wi-Fi/USB/modem nodes since 6.12); missing upstream were keyboard, audio, camera, Bluetooth, battery and vibration.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://archive.fosdem.org/2024/events/attachments/fosdem-2024-1707-mainline-linux-on-qualcomm-socs-are-we-here-now-/slides/22126/FOSDEM24_-_Mainline_Linux_on_Qualcomm_SoCs_are_cW72KOo.pdf (Neil Armstrong, FOSDEM 2024); https://fosdem.org/2026/schedule/event/SXNNMZ-snapdragon_8_gen_3_mainline_from_day-1_patches_to_product_reality/ (abstract only); SailfishOS/devices.json fxtec_mainline_2026.pro1x_qx1050"
-   },
-   {
-    "title": "Read the source that was actually built, from the debugsource RPM",
-    "general": "When a distro package's provenance is unclear (a fork, a branch, a date stamp, an OBS tar_git commit that is not public), download its -debugsource RPM and diff it against candidate upstreams. Reason about behaviour from the built source, never from a similar-looking public fork.",
-    "instance": "native-common qt5-qtmultimedia 5.6.2+v4l.20230905210651.c98eb6d0 turned out to be upstream mer-5.6 as of 2021-10 plus one 3-line hunk, with '+v4l' only dropping DEFINES+=DISABLE_V4L from the spec; the source branch is mlehtima/qtmultimedia branch v4l. The 2019 sailfishos-native fork, whose hard-coded primary/secondary camera code looked relevant, is not what is installed.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "Pro1-X port repo port/notes/research/research-camera-switching.md, research-camera-sink.md"
-   },
-   {
-    "title": "Validate community patch series before relying on them",
-    "general": "Device patch series in community repos can be malformed (hunk headers that do not match the body, broken context). Build at the last known-good commit, and report the broken patch upstream with the exact fix rather than working around it silently.",
-    "instance": "nyymi609/fxtec-pro1x-nixos commit 09c10bf ('add panel gap', 2026-10-20): pro1x-panelgap.patch header said +186,43 but the body had 36 lines, pro1x-dpugap.patch was malformed at line 50. The kernel built fine from 62bbb4a, the commit before.",
-    "confidence": "confirmed",
-    "date": "2026-10-22",
-    "source": "port log 2026-10-22 19:15-20:16 (nix kernel build failures, then success)"
-   },
-   {
-    "title": "Triangulate every device tree node from three sources",
-    "general": "Write each DT node from the downstream (vendor) DT, the upstream dt-bindings documentation and a similar SoC or board already upstream. Research existing bindings before inventing one; duplicate incompatible bindings are a known historic mistake.",
-    "instance": "General guidance; on the Pro1-X most nodes came from an existing community series, so the triangulation applies to new nodes such as the IPA and Venus board enables.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://mainlining.dev/ (Iskren Chernev, OnePlus Nord N100 series); https://docs.kernel.org/devicetree/usage-model.html"
-   }
-  ],
-  "reference_stacks": [
-   {
-    "title": "Keep a known-good reference OS bootable on the same unit",
-    "general": "Keep a working mainline OS (postmarketOS, NixOS or similar) bootable on the same phone. When a feature fails in your port, test it there first: if it fails there too, the cause is hardware, physical or firmware, not your port. This turns many hours of software debugging into a minute.",
-    "instance": "Pro1-X, 2026-10-23: the SIM read as absent over QMI on SailfishOS; NixOS (whose author reports calls and SMS working) showed ModemManager sim-missing too, so the cause was physical: the SIM was inserted the wrong way round.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 13:56-14:59 (qmicli card status absent on both OSes)"
-   },
-   {
-    "title": "Diff protocol traffic against the stack that works on the same hardware",
-    "general": "When one userspace stack fails where another is known to work on the same device and firmware, run the working one with full protocol logging and diff its exact message sequence (services, TLVs, endpoint ids, order) against yours. This is faster and more reliable than guessing from driver or daemon source. For QMI modems: boot the reference OS, mmcli -G debug, connect, and read 'Open Port', 'Set Data Format', 'Bind Mux Data Port' and 'Start Network' from the journal. Without NetworkManager, ModemManager connects but applies no IP; set the address on the mux interface by hand and ping through it.",
-    "instance": "Pro1-X mobile data, 2026-10-27: hours of blind probing and two guessed fixes (checksum flags, fresh setup) failed; one ModemManager 1.24.2 debug log on the NixOS side showed DPM OPEN_PORT, then WDA SET_DATA_FORMAT with QMAPv4, then WDS BIND_MUX_DATA_PORT without TLV 0x13, and the QMAPv4 difference was found within minutes. oFono patch 0020 copied the sequence; ping ~40 ms, HTTPS 200.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/patches/ofono/README.md; mm-connect.log TLV dump (mmcli --simple-connect='apn=...,ip-type=ipv4')"
-   },
-   {
-    "title": "Localise a bug by looking at the same hardware under a second userspace",
-    "general": "When a symptom could be DT/kernel or userspace, check it under another OS that consumes the same kernel interfaces with the same values. If the other OS gets it right, the DT and kernel are correct and the bug is in your userspace.",
-    "instance": "Pro1-X camera orientation, 2026-10-25: phosh on NixOS showed both cameras upright with libcamera Rotation front 90 / back 270, proving the DT rotation was right and the SailfishOS Qt change was wrong.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-25 15:07"
-   },
-   {
-    "title": "Build and boot the stock vendor kernel first as a baseline",
-    "general": "Before booting mainline, build and boot the vendor kernel from source: it is a known-good reference to read hardware facts from (regulators, GPIOs, clocks, panel init) and to compare behaviour against.",
-    "instance": "General guidance. On the Pro1-X a hybris SailfishOS port on the vendor 4.19 kernel existed and served as the performance baseline (see display_input_power.json).",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://mainlining.dev/ (Iskren Chernev)"
-   }
-  ],
-  "debugging": [
-   {
-    "title": "Set up a debug channel ladder before you need it",
-    "general": "Have at least one way to read logs at each boot stage: earlycon on a UART (make sure the UART driver declares earlycon and stdout-path points at it), simple-framebuffer for early display, a USB gadget (serial and network) for ssh as soon as USB works, pstore/ramoops to read the previous boot's log after a crash-reboot, and a persistent journal or black-box logger once userspace runs. Without a UART, printing to the framebuffer and stalling, or building suspect drivers as modules, helps localise early faults.",
-    "instance": "Pro1-X: no UART was used; a built-in USB CDC gadget (serial ttyGS0 + ECM at 172.16.42.1) gave ssh from the first boot; there was no ramoops node, which cost the log of an early crash (see hazards.json).",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://bootlin.com/pub/conferences/2016/elce/clement-arm64-soc-checklist/clement-arm64-soc-checklist.pdf (Gregory Clement, Bootlin, CC BY-SA 3.0); https://mainlining.dev/; https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss)"
-   },
-   {
-    "title": "Make the journal persistent for bring-up and read it before rebooting",
-    "general": "Some phone OSes run journald volatile with a tiny runtime limit (SailfishOS: Storage=volatile, RuntimeMaxUse=1M), so a reboot erases the evidence and even a running system rotates boot-time lines within minutes. For bring-up add a journald.conf.d drop-in with Storage=persistent and create /var/log/journal before the first boot, so a hung boot can be read with journalctl -b -1 or from another OS. On a production-like system read the live journal soon after a fault, as root.",
-    "instance": "Pro1-X 2026-10-23: added after the first SailfishOS boot hung and its cause was lost; later boots readable. On the Jolla C2 a failed unit's boot log was gone 25 minutes after boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 11:34-11:50; SailfishOS/device_access_and_tooling.json journal"
-   },
-   {
-    "title": "Black-box logger readable from the recovery OS",
-    "general": "When the port may not come up far enough for ssh, a sysinit-wanted script that periodically writes journal, dmesg, failed units, user-session status and device nodes to /var/log and syncs lets the recovery OS read what happened.",
-    "instance": "Pro1-X: qx1050-blackbox.sh every 20 s, keeps the first 30 snapshots in /var/log/blackbox.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-blackbox.sh"
-   },
-   {
-    "title": "Compare the live DTB and built config, not the files you think you installed",
-    "general": "/sys/firmware/fdt is the DTB the kernel actually booted and /proc/config.gz the config it was built with. Dump and diff those (dtc -I dtb -O dts) when two kernels behave differently or when a DT change seems to have no effect.",
-    "instance": "Pro1-X 2026-10-23: confirmed DTBs byte-identical between the NixOS and SailfishOS kernels and that the built configs differed by exactly the SailfishOS fragment.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 21:26, 21:37"
-   },
-   {
-    "title": "Test DT property changes with fdtput, then prove the source build matches byte for byte",
-    "general": "For a DT property change, edit the built DTB with fdtget/fdtput (dtc package) and boot it to test at once; then write the real source patch, rebuild, and compare the md5 of the rebuilt DTB with the hand-edited one. Identical hashes prove the source change and the test agree.",
-    "instance": "Pro1-X 2026-10-25: removed firmware-name from /soc@0/video-codec@5a00000 with fdtput; the source-built DTB of the next kernel was byte-identical to the edited one.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-25 01:36, 02:10"
-   },
-   {
-    "title": "Test a firmware swap with a bind mount and a driver reload",
-    "general": "To test whether a different firmware blob works, bind-mount the candidate over the exact path the driver requests (RAM only, gone at reboot), unbind or reload the driver module and read dmesg. Change DT or packaging only after that works, and record that the test used a bind mount and which DTB was running.",
-    "instance": "Pro1-X SailfishOS 2026-10-25: mount --bind /tmp/venus-6.0.55.mbn /lib/firmware/qcom/sm6115/Fxtec/QX1050/venus.mbn, reload the venus modules: probe OK, /dev/video13 qcom-venus-encoder. The commit message later had to be corrected because the test ran with the bind mount and the old DTB.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-25 01:26"
-   },
-   {
-    "title": "Verify a reboot happened before reading test results",
-    "general": "'ssh answers again' or a person saying 'rebooted' is not proof: the UI may only have restarted or the reboot command may have been lost. Check that /proc/uptime is small before attributing a result to a new kernel or config.",
-    "instance": "Pro1-X 2026-10-24 23:09: uptime was 9 h 23 min, so the new Venus kernel had never run and only a per-app library change was active. Jolla tablet 2026-10-03: a lost reboot looked like a 20-second reboot until uptime showed 7 hours.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "port log 2026-10-24 23:10; SailfishOS/device_access_and_tooling.json root_through_devel_su.verify_a_reboot_by_uptime"
-   },
-   {
-    "title": "Run long jobs and reboots detached from the ssh session",
-    "general": "A job backgrounded inside an interactive root session (nohup ... &) can die when the session closes. Start long jobs (dist-upgrades, builds on the device) as transient units with systemd-run --unit=<name> /bin/sh -c '<job> > <log> 2>&1', and call systemctl reboot directly instead of a delayed background reboot.",
-    "instance": "Jolla tablet 2026-10-03 (lost background reboot); used for the Pro1-X SailfishOS 5.1 to 5.2 dup on 2026-10-27.",
-    "confidence": "confirmed",
-    "date": "2026-10-03",
-    "source": "SailfishOS/device_access_and_tooling.json root_through_devel_su.background_jobs_die_with_the_session; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Judge UI-dependent behaviour only on a boot where the UI runs",
-    "general": "Session daemons (display-on windows, lock policy, LED triggers) behave differently without the compositor. Test LED and switch reactions only on a boot where the UI is up, or the observation misleads.",
-    "instance": "Pro1-X 2026-10-23, UI-less bisect boot: mce kept the display on only 3-4 s after each slide event, so the keyboard LED flashed after both directions and looked inverted.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 22:47-22:48"
-   },
-   {
-    "title": "Borrow diagnostic tools from the dual-boot partner's package store",
-    "general": "If the target OS lacks a diagnostic tool, run the partner distro's binaries in place. Nix binaries carry absolute store paths for their libraries, so they work once /nix resolves: mount the partner's filesystem and bind its store to /nix (lost at reboot).",
-    "instance": "Pro1-X SailfishOS 2026-10-23..25: the port's SailfishOS rootfs had no v4l-utils, python, strings or timeout, and zypper/pkcon found no v4l-utils; mkdir /nix; mount --bind /mnt/nixos/nix/store /nix/store, then /nix/store/*-v4l-utils-1.32.0/bin/v4l2-ctl and media-ctl ran. The same trick gave qmicli before libqmi-utils was installed.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-23 13:27-13:56, 2026-10-25 15:38; Pro1-X port repo port/notes/external-packages.md"
-   },
-   {
-    "title": "Find which process holds a device node, and whether the device is powered",
-    "general": "To see whether an app actually opened and powered a sensor, lens or codec, scan /proc/*/fd for the /dev node and read the device's power/runtime_status in sysfs.",
-    "instance": "Pro1-X 2026-10-25: jolla-camera held /dev/v4l-subdev20 (the DW9800 lens) and /sys/bus/i2c/devices/2-000c/power/runtime_status read active.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-25 15:50"
-   },
-   {
-    "title": "Get dev_dbg output with -DDEBUG and keep a list of cmdline workarounds",
-    "general": "Compile a single driver with -DDEBUG (or #define DEBUG at the top) to get its dev_dbg output without setting up dynamic debug. New kernel features such as fw_devlink can break phone drivers in a new release; keep a list of the cmdline workarounds you use and why.",
-    "instance": "General guidance, not exercised on the Pro1-X so far.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://connolly.tech/posts/ (Caleb Connolly, '-DDEBUGging the kernel', 2023)"
-   },
-   {
-    "title": "Unexpected resets usually mean a missing clock, a wrong register or an IOMMU fault",
-    "general": "Mainline does not keep the bootloader's IOMMU mappings; a device that resets during early driver probe most often has a missing clock, a wrong register address or an IOMMU fault. Each compatible added also needs its Kconfig symbol enabled, a common silent failure.",
-    "instance": "General guidance from a Qualcomm phone bring-up (Fairphone 4, SM7225).",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss, FOSDEM 2023); https://mainlining.dev/"
-   },
-   {
-    "title": "Thermal zone type names can lie",
-    "general": "Do not trust a thermal zone's type string; check the value range. A zone named 'soc' may be the battery state of charge, not a temperature.",
-    "instance": "Pro1-X hybris 4.19 kernel (contrast case): thermal zone type 'soc' held the battery charge and read as a flat 87-88 C until excluded.",
-    "confidence": "confirmed",
-    "date": "2026-10-21",
-    "source": "port log 2026-10-21 22:47 (benchmark temperature bug)"
-   },
-   {
-    "title": "Tool-shell traps: zsh modifiers, unquoted globs, tee hiding exit codes",
-    "general": "In zsh, '$t:arch/...' applies the ':a' history modifier to $t; write \"${t}:arch/...\". An unquoted --include=*.nix is globbed by the shell. Piping a build through tee makes a failed build report rc=0; write the real status to a file and wait on that.",
-    "instance": "Agent tool shell on a second build host, kernel 7.3 rebase and build, 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-26"
-   },
-   {
-    "title": "An ssh agent offering many keys trips MaxAuthTries",
-    "general": "'Too many authentication failures' when the agent offers every key before the password: use -o PubkeyAuthentication=no or IdentitiesOnly with the right key. Record each OS's login user on a dual-boot device so an agent does not hand steps back to the person.",
-    "instance": "Pro1-X NixOS side (user nixos with sudo, not root), 2026-10-27.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "port log 2026-10-27"
-   }
-  ],
-  "process": [
-   {
-    "title": "After two failed fixes, stop and diagnose",
-    "general": "After two unsuccessful fix attempts on the same symptom, stop changing things and gather diagnostics (verbose daemon runs, source reading, A/B against a working stack) before the next attempt.",
-    "instance": "Pro1-X 2026-10-23: Wi-Fi reconnect (the converted profile never matched), SIM (found the provisioning session), ngfd ENOSPC (source reading found 17 effects against 16 slots) and the PulseAudio abort (found the upstream assertion fix) were each resolved only after the diagnosis step.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23"
-   },
-   {
-    "title": "Make a crash-to-recovery loop the default test cycle",
-    "general": "Arm a one-shot boot of the port, let any failure reboot into a known-good OS, keep the port's logs on a filesystem the recovery OS can read, and install kernels from either side with twin scripts. The device can then never be stranded and every crash still leaves evidence. A fast iteration loop is the biggest multiplier in bring-up; tethered USB boot let the Asahi project test kernels in seconds.",
-    "instance": "Pro1-X: sfos-boot-once.sh plus an initramfs that restores extlinux.conf, sfos-kernel-install.sh (from SailfishOS) and sfos-kernel-install-from-nixos.sh (from NixOS), qx1050-blackbox.service. Mechanism in boot.json.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "Pro1-X port repo port/scripts/sfos-boot-once.sh, port/scripts/sfos-kernel-install-from-nixos.sh; https://asahilinux.org/docs/ (fast loop, reported)"
-   },
-   {
-    "title": "Start on the newest mainline release and rebase every release",
-    "general": "A kernel chosen for a port tends to stay for years, so start on the newest stable mainline rather than the version an existing community build uses, and rebase and retest on every release (about nine weeks). Tracking -rc and linux-next on the device surfaces regressions while they are cheap.",
-    "instance": "Pro1-X: moWerk asked on 2026-10-23 to aim at 7.3 instead of 7.1 because 'a once ported kernel sticks for a while' (an AsteroidOS precedent had a wanted feature only in a newer kernel); rebased to 7.3 on 2026-10-26 and test-applied to the 7.4 merge window.",
-    "confidence": "reported",
-    "date": "2026-10-23",
-    "source": "moWerk 2026-10-23 19:46; https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf (Luca Weiss, FOSDEM 2025); https://bootlin.com/pub/conferences/2014/elce/petazzoni-soc-mainlining-lessons-learned/petazzoni-soc-mainlining-lessons-learned.pdf (Thomas Petazzoni, CC BY-SA 3.0)"
-   },
-   {
-    "title": "Record exactly what ran; never overstate a test",
-    "general": "In commit messages and notes record which kernel and DTB ran, which mechanism (bind mount versus packaged), and whether it ran in the app or only in a pipeline test. Check upstream merge claims against the source: which release, who applied it.",
-    "instance": "Pro1-X: the Venus commit was corrected to 'tested by bind-mounting 6.0.55 with the old DTB'; an upstream note was corrected from 'merged for 7.3' to 'DT patches applied by Bjorn Andersson on 2026-07-08'.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-24 20:10, 2026-10-25 01:44"
-   },
-   {
-    "title": "Write down dead ends as they happen and keep package sources in the port repo",
-    "general": "Record the traps met (packaging that ignores patches, what an RFC leaves out, accidental 'working' states, mechanical noises) in the port's notes at the moment they are found, and copy package specs, patches and tuning files into the port repo: build directories outside version control are invisible to a successor.",
-    "instance": "Pro1-X port notes/external-packages.md 'Pitfalls met on the way' and patches/libcamera/, 2026-10-25.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "Pro1-X port repo commits 5cb6b76, de4c9c1, 36092f3"
-   },
-   {
-    "title": "Ask about parallel work on the same device before proposing an adaptation",
-    "general": "Check the distribution's build service and GitHub organisations for existing projects for the same device, and coordinate with their maintainer before upstreaming a new adaptation.",
-    "instance": "piggz pushed sailfish-on-fxtecpro1/*-halium-qx1050 (Halium 4.19, 2026-10-03/04, OBS nemo:devel:hw:fxtec:halium-qx1050), and an empty nemo:devel:hw:fxtec:qx1050 project exists; a mainline qx1050 adaptation needs his agreement first.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "packaging research report 2026-10-23 19:17"
-   },
-   {
-    "title": "Bring-up proves function; test reliability over days",
-    "general": "Users judge reliability (suspend cycles, long uptime, battery drain), not first-boot function. Define done per subsystem to include multi-day use, and plan explicitly for the usually missing pieces: camera, fuel gauge, calls and mobile data.",
-    "instance": "Pro1-X as of 2026-10-27: no suspend or multi-day measurements yet; the longest recorded uptime with a full hardware check is 3 h 44 min on 7.3.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf (Luca Weiss, FOSDEM 2025)"
-   },
-   {
-    "title": "Commit every small success, squash later",
-    "general": "Commit each small working step during bring-up and squash into a clean series later; it keeps rollback cheap and makes the history readable for the upstream split.",
-    "instance": "General guidance (Fairphone 4 bring-up); the Pro1-X port repo follows it.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss, FOSDEM 2023)"
-   },
-   {
-    "title": "An agent's safety check may refuse build wrappers that contain rm -rf",
-    "general": "An autonomous agent's permission check can refuse a build wrapper that clears its build directory with rm -rf, leaving the person to run it. Allow the script explicitly in the permissions, or avoid rm -rf in wrappers.",
-    "instance": "sfos-mb2-build.sh, 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-26"
-   }
-  ]
- }
+  "method": {
+    "note": "How to work on a mainline phone port: where the answers usually already are, which reference stacks to diff against, how faults were localised, and the working habits that kept the port moving. Built from the F(x)tec Pro1-X (SM6115) SailfishOS port on its own mainline kernel (Linux 7.1, then 7.3), 2026-10-21 to 2026-10-27, plus general mainlining guides (kernel documentation, Bootlin, FOSDEM talks; confidence reported, URL as source; full list in references.json). State: the method has been applied to every subsystem from first boot to mobile data; the strongest single lesson is that nearly every blocker already had a worked answer somewhere, and that diffing against a working stack on the same hardware beats guessing.",
+    "research_first": [
+      {
+        "title": "Research existing ports and upstream before implementing anything",
+        "general": "Before writing configs, drivers or algorithms for a subsystem, send read-only research at every place that may already have solved it: the same device on other mainline distros, the only maintained mainline family of the target OS, the hybris/vendor config of the same device, the target OS's own sources and issue trackers, and upstream patchwork, mailing lists and developer branches. Each research report should label confirmed versus inferred and end with a least-effort recommendation; plan only after reading them. Writing from scratch first is the typical failure of an LLM-driven port: it reinvents what exists and needs several blind fixes per item.",
+        "instance": "Pro1-X, 2026-10-23: vibration (ngfd), mce backlight, PulseAudio/ohm, modem and packaging were first written from scratch and vibration alone cost three blind fixes; eight research reports (audio, modem, keyboard, packaging, sensors/camera, vibration, camera sink, camera switching) then found every first-day blocker already solved in the NixOS port of the same phone (nyymi609/fxtec-pro1x-nixos), sailfish-on-dontbeevil (PinePhone) or postmarketOS msm-modem. 2026-10-24: research found the qtmultimedia source that actually ships and the viewfinder sink path. 2026-10-25: an upstream search found a libcamera soft-ISP autofocus RFC posted four days earlier, so the work became a backport plus the one missing piece (a sharpness statistic) and a real-device test report.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json method.research_first; Pro1-X port repo port/notes/research/*.md, port/README.md; port log 2026-10-23 19:00-19:29, 2026-10-24, 2026-10-25"
+      },
+      {
+        "title": "List every published mainline port of the target OS and its shared middleware repo",
+        "general": "Before designing, enumerate all mainline ports of the target OS (active or not), the device each targets, where binaries and sources live, and the shared middleware repository native ports draw from. Most components already exist in one of them; the list also tells you whom to ask.",
+        "instance": "SailfishOS on mainline, survey 2026-10-22: sailfish-on-dontbeevil by piggz (PinePhone, PinePhone Pro, PineTab2; the only maintained family); VerdandiTeam droid-config-victara + victara-mainline-linux branch victara-7.3 (Moto X 2014, Mister_Magister, GPU enabled 2026-10-14 on the qcom_iommu series, still has hybris leftovers); birdzhang Xiaomi Pad 5 nabu (SM8150) on OBS home:birdzhang:nabu_mainline (binaries only, kernel-adaptation-nabu 6.14.11); affe_null Jolla C2 (UMS9230) mainline on OBS home:affe_null:c2-mainlining, boots from SD. Shared middleware: OBS nemo:devel:hw:native-common (mesa 25.1.8, wayland 1.24, libcamera 0.4, libqmi 1.34, libqrtr-glib, qt5-qtwayland, qtscenegraph-adaptation, plymouth-lite, geoclue-provider-gpsd3), sources on github.com/sailfishos-native.",
+        "confidence": "confirmed",
+        "date": "2026-10-22",
+        "source": "research subagent report 2026-10-22 (repo and OBS listings read); native-common file listing checked 2026-10-23"
+      },
+      {
+        "title": "Another distro's mainline port of the same device is the hardware source of truth",
+        "general": "When the phone already runs on mainline under another distro, take the hardware side from it: kernel patch series, firmware set, UCM profile, sensor registry data, helper scripts and module parameters. The target OS only supplies the userspace shape, so the job becomes a translation of the integration layer (PipeWire to PulseAudio, ModemManager to oFono, iio-sensor-proxy to sensorfw, keyd to xkb) rather than new hardware work.",
+        "instance": "Pro1-X: fxtec-pro1x-nixos (nyymi609) supplied the kernel series, firmware, UCM, haptics driver and its parameters, hexagonfs sensor data and voicepcm.c; sailfish-on-dontbeevil supplied the SailfishOS userspace template.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/README.md, port/notes/research/research-audio.md"
+      },
+      {
+        "title": "Check how much of the SoC is already upstream before planning",
+        "general": "Many Qualcomm SoCs since about 2018 already have a SoC dtsi upstream, and current flagships may be supported from launch day by the vendor's landing team. Measure what exists with git (boards and commits per tag, grep for the SoC compatible) instead of assuming a from-zero bring-up; the plan for an SoC with a dtsi is board enablement, not SoC enablement.",
+        "instance": "Pro1-X: SM6115 had an upstream dtsi and an upstream board DTS (sm6115-fxtec-pro1x.dts by Dang Huynh, display/GPU/touch/Wi-Fi/USB/modem nodes since 6.12); missing upstream were keyboard, audio, camera, Bluetooth, battery and vibration.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://archive.fosdem.org/2024/events/attachments/fosdem-2024-1707-mainline-linux-on-qualcomm-socs-are-we-here-now-/slides/22126/FOSDEM24_-_Mainline_Linux_on_Qualcomm_SoCs_are_cW72KOo.pdf (Neil Armstrong, FOSDEM 2024); https://fosdem.org/2026/schedule/event/SXNNMZ-snapdragon_8_gen_3_mainline_from_day-1_patches_to_product_reality/ (abstract only); SailfishOS/devices.json fxtec_mainline_2026.pro1x_qx1050"
+      },
+      {
+        "title": "Read the source that was actually built, from the debugsource RPM",
+        "general": "When a distro package's provenance is unclear (a fork, a branch, a date stamp, an OBS tar_git commit that is not public), download its -debugsource RPM and diff it against candidate upstreams. Reason about behaviour from the built source, never from a similar-looking public fork.",
+        "instance": "native-common qt5-qtmultimedia 5.6.2+v4l.20230905210651.c98eb6d0 turned out to be upstream mer-5.6 as of 2021-10 plus one 3-line hunk, with '+v4l' only dropping DEFINES+=DISABLE_V4L from the spec; the source branch is mlehtima/qtmultimedia branch v4l. The 2019 sailfishos-native fork, whose hard-coded primary/secondary camera code looked relevant, is not what is installed.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "Pro1-X port repo port/notes/research/research-camera-switching.md, research-camera-sink.md"
+      },
+      {
+        "title": "Validate community patch series before relying on them",
+        "general": "Device patch series in community repos can be malformed (hunk headers that do not match the body, broken context). Build at the last known-good commit, and report the broken patch upstream with the exact fix rather than working around it silently.",
+        "instance": "nyymi609/fxtec-pro1x-nixos commit 09c10bf ('add panel gap', 2026-10-20): pro1x-panelgap.patch header said +186,43 but the body had 36 lines, pro1x-dpugap.patch was malformed at line 50. The kernel built fine from 62bbb4a, the commit before.",
+        "confidence": "confirmed",
+        "date": "2026-10-22",
+        "source": "port log 2026-10-22 19:15-20:16 (nix kernel build failures, then success)"
+      },
+      {
+        "title": "Triangulate every device tree node from three sources",
+        "general": "Write each DT node from the downstream (vendor) DT, the upstream dt-bindings documentation and a similar SoC or board already upstream. Research existing bindings before inventing one; duplicate incompatible bindings are a known historic mistake.",
+        "instance": "General guidance; on the Pro1-X most nodes came from an existing community series, so the triangulation applies to new nodes such as the IPA and Venus board enables.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://mainlining.dev/ (Iskren Chernev, OnePlus Nord N100 series); https://docs.kernel.org/devicetree/usage-model.html"
+      },
+      {
+        "title": "GPU A/B: fixed-load benchmark, fresh boots, sample frequency and bandwidth votes",
+        "general": "For GPU changes run a fixed-load benchmark (no ramp) several times per side, each side after a fresh boot, and sample GPU devfreq frequency and the GPU's interconnect vote during the runs. The samples tell whether a change took effect (vote non-zero) and whether frequency or bandwidth is the limit. Check a quick win against all stages before adopting it: a Mesa flag that helps overdraw can cost elsewhere.",
+        "instance": "Pro1-X with Benchymark (SFOS_SELFTEST_FIXED=1, session environment from systemctl --user show-environment): the bandwidth vote gave +8 to +37 %; FD_MESA_DEBUG=gmem gave +10 % on Overdraw/Icon storm but -17 % on Cascade and was not adopted.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (notes/modem-dog-crash.md, notes/gpu-perf.md, kernel patches 0021-0022)"
+      },
+      {
+        "title": "The mic loopback oracle cannot hear power-down pops: they couple electrically into the mic path",
+        "general": "A mic-vs-speaker loopback (record the phone's own mic while the speaker plays) proves that audio leaves the DSP, but it is no instrument for pops and clicks at codec power-down: on Qualcomm LPASS the RX side powering down produces a repeatable spike in the digital mic data (shared clocks/codec; the decimator turns it into a ringing transient), and the playback signal itself couples into the mic path. Check before trusting it: run the same test on a route with no transducer (headphones, nothing plugged in). If the 'sound' and the spike are still recorded, the oracle measures electrical coupling, and the pop needs ears.",
+        "instance": "Pro1-X SM6115, wcd937x + VA DMIC, 2026-10-29: PulseAudio suspend-on-idle (5 s) gives an audible tack; the mic recorded a ~12000 peak at the suspend on every run, identical with the speaker amplifier kept on or switched off (amplifier registers confirmed off), on the speaker, earpiece and the unplugged headphone route; the unplugged headphone route also 'recorded' the test tone at full level. All 97 DAPM widgets switch off within one 20 ms poll, amplifier first. Open: the tack's real source (earpiece or speaker by ear).",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "session 2026-10-29, /root/tack on the phone; port README Audio row"
+      }
+    ],
+    "reference_stacks": [
+      {
+        "title": "Keep a known-good reference OS bootable on the same unit",
+        "general": "Keep a working mainline OS (postmarketOS, NixOS or similar) bootable on the same phone. When a feature fails in your port, test it there first: if it fails there too, the cause is hardware, physical or firmware, not your port. This turns many hours of software debugging into a minute.",
+        "instance": "Pro1-X, 2026-10-23: the SIM read as absent over QMI on SailfishOS; NixOS (whose author reports calls and SMS working) showed ModemManager sim-missing too, so the cause was physical: the SIM was inserted the wrong way round.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 13:56-14:59 (qmicli card status absent on both OSes)"
+      },
+      {
+        "title": "Diff protocol traffic against the stack that works on the same hardware",
+        "general": "When one userspace stack fails where another is known to work on the same device and firmware, run the working one with full protocol logging and diff its exact message sequence (services, TLVs, endpoint ids, order) against yours. This is faster and more reliable than guessing from driver or daemon source. For QMI modems: boot the reference OS, mmcli -G debug, connect, and read 'Open Port', 'Set Data Format', 'Bind Mux Data Port' and 'Start Network' from the journal. Without NetworkManager, ModemManager connects but applies no IP; set the address on the mux interface by hand and ping through it.",
+        "instance": "Pro1-X mobile data, 2026-10-27: hours of blind probing and two guessed fixes (checksum flags, fresh setup) failed; one ModemManager 1.24.2 debug log on the NixOS side showed DPM OPEN_PORT, then WDA SET_DATA_FORMAT with QMAPv4, then WDS BIND_MUX_DATA_PORT without TLV 0x13, and the QMAPv4 difference was found within minutes. oFono patch 0020 copied the sequence; ping ~40 ms, HTTPS 200.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/patches/ofono/README.md; mm-connect.log TLV dump (mmcli --simple-connect='apn=...,ip-type=ipv4')"
+      },
+      {
+        "title": "Localise a bug by looking at the same hardware under a second userspace",
+        "general": "When a symptom could be DT/kernel or userspace, check it under another OS that consumes the same kernel interfaces with the same values. If the other OS gets it right, the DT and kernel are correct and the bug is in your userspace.",
+        "instance": "Pro1-X camera orientation, 2026-10-25: phosh on NixOS showed both cameras upright with libcamera Rotation front 90 / back 270, proving the DT rotation was right and the SailfishOS Qt change was wrong.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 15:07"
+      },
+      {
+        "title": "Build and boot the stock vendor kernel first as a baseline",
+        "general": "Before booting mainline, build and boot the vendor kernel from source: it is a known-good reference to read hardware facts from (regulators, GPIOs, clocks, panel init) and to compare behaviour against.",
+        "instance": "General guidance. On the Pro1-X a hybris SailfishOS port on the vendor 4.19 kernel existed and served as the performance baseline (see display_input_power.json).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://mainlining.dev/ (Iskren Chernev)"
+      }
+    ],
+    "debugging": [
+      {
+        "title": "Set up a debug channel ladder before you need it",
+        "general": "Have at least one way to read logs at each boot stage: earlycon on a UART (make sure the UART driver declares earlycon and stdout-path points at it), simple-framebuffer for early display, a USB gadget (serial and network) for ssh as soon as USB works, pstore/ramoops to read the previous boot's log after a crash-reboot, and a persistent journal or black-box logger once userspace runs. Without a UART, printing to the framebuffer and stalling, or building suspect drivers as modules, helps localise early faults.",
+        "instance": "Pro1-X: no UART was used; a built-in USB CDC gadget (serial ttyGS0 + ECM at 172.16.42.1) gave ssh from the first boot; there was no ramoops node, which cost the log of an early crash (see hazards.json).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://bootlin.com/pub/conferences/2016/elce/clement-arm64-soc-checklist/clement-arm64-soc-checklist.pdf (Gregory Clement, Bootlin, CC BY-SA 3.0); https://mainlining.dev/; https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss)"
+      },
+      {
+        "title": "Make the journal persistent for bring-up and read it before rebooting",
+        "general": "Some phone OSes run journald volatile with a tiny runtime limit (SailfishOS: Storage=volatile, RuntimeMaxUse=1M), so a reboot erases the evidence and even a running system rotates boot-time lines within minutes. For bring-up add a journald.conf.d drop-in with Storage=persistent and create /var/log/journal before the first boot, so a hung boot can be read with journalctl -b -1 or from another OS. On a production-like system read the live journal soon after a fault, as root.",
+        "instance": "Pro1-X 2026-10-23: added after the first SailfishOS boot hung and its cause was lost; later boots readable. On the Jolla C2 a failed unit's boot log was gone 25 minutes after boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 11:34-11:50; SailfishOS/device_access_and_tooling.json journal"
+      },
+      {
+        "title": "Black-box logger readable from the recovery OS",
+        "general": "When the port may not come up far enough for ssh, a sysinit-wanted script that periodically writes journal, dmesg, failed units, user-session status and device nodes to /var/log and syncs lets the recovery OS read what happened.",
+        "instance": "Pro1-X: qx1050-blackbox.sh every 20 s, keeps the first 30 snapshots in /var/log/blackbox.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-blackbox.sh"
+      },
+      {
+        "title": "Compare the live DTB and built config, not the files you think you installed",
+        "general": "/sys/firmware/fdt is the DTB the kernel actually booted and /proc/config.gz the config it was built with. Dump and diff those (dtc -I dtb -O dts) when two kernels behave differently or when a DT change seems to have no effect.",
+        "instance": "Pro1-X 2026-10-23: confirmed DTBs byte-identical between the NixOS and SailfishOS kernels and that the built configs differed by exactly the SailfishOS fragment.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 21:26, 21:37"
+      },
+      {
+        "title": "Test DT property changes with fdtput, then prove the source build matches byte for byte",
+        "general": "For a DT property change, edit the built DTB with fdtget/fdtput (dtc package) and boot it to test at once; then write the real source patch, rebuild, and compare the md5 of the rebuilt DTB with the hand-edited one. Identical hashes prove the source change and the test agree.",
+        "instance": "Pro1-X 2026-10-25: removed firmware-name from /soc@0/video-codec@5a00000 with fdtput; the source-built DTB of the next kernel was byte-identical to the edited one.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 01:36, 02:10"
+      },
+      {
+        "title": "Test a firmware swap with a bind mount and a driver reload",
+        "general": "To test whether a different firmware blob works, bind-mount the candidate over the exact path the driver requests (RAM only, gone at reboot), unbind or reload the driver module and read dmesg. Change DT or packaging only after that works, and record that the test used a bind mount and which DTB was running.",
+        "instance": "Pro1-X SailfishOS 2026-10-25: mount --bind /tmp/venus-6.0.55.mbn /lib/firmware/qcom/sm6115/Fxtec/QX1050/venus.mbn, reload the venus modules: probe OK, /dev/video13 qcom-venus-encoder. The commit message later had to be corrected because the test ran with the bind mount and the old DTB.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 01:26"
+      },
+      {
+        "title": "Verify a reboot happened before reading test results",
+        "general": "'ssh answers again' or a person saying 'rebooted' is not proof: the UI may only have restarted or the reboot command may have been lost. Check that /proc/uptime is small before attributing a result to a new kernel or config.",
+        "instance": "Pro1-X 2026-10-24 23:09: uptime was 9 h 23 min, so the new Venus kernel had never run and only a per-app library change was active. Jolla tablet 2026-10-03: a lost reboot looked like a 20-second reboot until uptime showed 7 hours.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 23:10; SailfishOS/device_access_and_tooling.json root_through_devel_su.verify_a_reboot_by_uptime"
+      },
+      {
+        "title": "Run long jobs and reboots detached from the ssh session",
+        "general": "A job backgrounded inside an interactive root session (nohup ... &) can die when the session closes. Start long jobs (dist-upgrades, builds on the device) as transient units with systemd-run --unit=<name> /bin/sh -c '<job> > <log> 2>&1', and call systemctl reboot directly instead of a delayed background reboot.",
+        "instance": "Jolla tablet 2026-10-03 (lost background reboot); used for the Pro1-X SailfishOS 5.1 to 5.2 dup on 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-03",
+        "source": "SailfishOS/device_access_and_tooling.json root_through_devel_su.background_jobs_die_with_the_session; Pro1-X port repo port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Judge UI-dependent behaviour only on a boot where the UI runs",
+        "general": "Session daemons (display-on windows, lock policy, LED triggers) behave differently without the compositor. Test LED and switch reactions only on a boot where the UI is up, or the observation misleads.",
+        "instance": "Pro1-X 2026-10-23, UI-less bisect boot: mce kept the display on only 3-4 s after each slide event, so the keyboard LED flashed after both directions and looked inverted.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 22:47-22:48"
+      },
+      {
+        "title": "Borrow diagnostic tools from the dual-boot partner's package store",
+        "general": "If the target OS lacks a diagnostic tool, run the partner distro's binaries in place. Nix binaries carry absolute store paths for their libraries, so they work once /nix resolves: mount the partner's filesystem and bind its store to /nix (lost at reboot).",
+        "instance": "Pro1-X SailfishOS 2026-10-23..25: the port's SailfishOS rootfs had no v4l-utils, python, strings or timeout, and zypper/pkcon found no v4l-utils; mkdir /nix; mount --bind /mnt/nixos/nix/store /nix/store, then /nix/store/*-v4l-utils-1.32.0/bin/v4l2-ctl and media-ctl ran. The same trick gave qmicli before libqmi-utils was installed.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-23 13:27-13:56, 2026-10-25 15:38; Pro1-X port repo port/notes/external-packages.md"
+      },
+      {
+        "title": "Find which process holds a device node, and whether the device is powered",
+        "general": "To see whether an app actually opened and powered a sensor, lens or codec, scan /proc/*/fd for the /dev node and read the device's power/runtime_status in sysfs.",
+        "instance": "Pro1-X 2026-10-25: jolla-camera held /dev/v4l-subdev20 (the DW9800 lens) and /sys/bus/i2c/devices/2-000c/power/runtime_status read active.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-25 15:50"
+      },
+      {
+        "title": "Get dev_dbg output with -DDEBUG and keep a list of cmdline workarounds",
+        "general": "Compile a single driver with -DDEBUG (or #define DEBUG at the top) to get its dev_dbg output without setting up dynamic debug. New kernel features such as fw_devlink can break phone drivers in a new release; keep a list of the cmdline workarounds you use and why.",
+        "instance": "General guidance, not exercised on the Pro1-X so far.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://connolly.tech/posts/ (Caleb Connolly, '-DDEBUGging the kernel', 2023)"
+      },
+      {
+        "title": "Unexpected resets usually mean a missing clock, a wrong register or an IOMMU fault",
+        "general": "Mainline does not keep the bootloader's IOMMU mappings; a device that resets during early driver probe most often has a missing clock, a wrong register address or an IOMMU fault. Each compatible added also needs its Kconfig symbol enabled, a common silent failure.",
+        "instance": "General guidance from a Qualcomm phone bring-up (Fairphone 4, SM7225).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss, FOSDEM 2023); https://mainlining.dev/"
+      },
+      {
+        "title": "Thermal zone type names can lie",
+        "general": "Do not trust a thermal zone's type string; check the value range. A zone named 'soc' may be the battery state of charge, not a temperature.",
+        "instance": "Pro1-X hybris 4.19 kernel (contrast case): thermal zone type 'soc' held the battery charge and read as a flat 87-88 C until excluded.",
+        "confidence": "confirmed",
+        "date": "2026-10-21",
+        "source": "port log 2026-10-21 22:47 (benchmark temperature bug)"
+      },
+      {
+        "title": "Tool-shell traps: zsh modifiers, unquoted globs, tee hiding exit codes",
+        "general": "In zsh, '$t:arch/...' applies the ':a' history modifier to $t; write \"${t}:arch/...\". An unquoted --include=*.nix is globbed by the shell. Piping a build through tee makes a failed build report rc=0; write the real status to a file and wait on that.",
+        "instance": "Agent tool shell on a second build host, kernel 7.3 rebase and build, 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-26"
+      },
+      {
+        "title": "An ssh agent offering many keys trips MaxAuthTries",
+        "general": "'Too many authentication failures' when the agent offers every key before the password: use -o PubkeyAuthentication=no or IdentitiesOnly with the right key. Record each OS's login user on a dual-boot device so an agent does not hand steps back to the person.",
+        "instance": "Pro1-X NixOS side (user nixos with sudo, not root), 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-27"
+      },
+      {
+        "title": "Frame timing from the display interrupt on a command-mode panel",
+        "general": "On a command-mode DSI panel the MDSS interrupt ('msm' in /proc/interrupts) fires once per committed frame, so polling its count every 2 ms (a small python loop) gives per-frame timestamps without tracefs: frame intervals, dropped-frame holes, together with GPU runtime PM state and CPU frequencies. A shell loop that forks per sample is too coarse (20-40 ms).",
+        "instance": "Pro1-X (BOE command-mode panel), kernel without ftrace: Settings scrolling showed a median 16.8 ms interval and 100-220 ms holes about once a second; GPU devfreq sat at 950 MHz and a 1 s GPU autosuspend delay instead of 66 ms changed nothing measurable.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline"
+      }
+    ],
+    "process": [
+      {
+        "title": "After two failed fixes, stop and diagnose",
+        "general": "After two unsuccessful fix attempts on the same symptom, stop changing things and gather diagnostics (verbose daemon runs, source reading, A/B against a working stack) before the next attempt.",
+        "instance": "Pro1-X 2026-10-23: Wi-Fi reconnect (the converted profile never matched), SIM (found the provisioning session), ngfd ENOSPC (source reading found 17 effects against 16 slots) and the PulseAudio abort (found the upstream assertion fix) were each resolved only after the diagnosis step.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23"
+      },
+      {
+        "title": "Make a crash-to-recovery loop the default test cycle",
+        "general": "Arm a one-shot boot of the port, let any failure reboot into a known-good OS, keep the port's logs on a filesystem the recovery OS can read, and install kernels from either side with twin scripts. The device can then never be stranded and every crash still leaves evidence. A fast iteration loop is the biggest multiplier in bring-up; tethered USB boot let the Asahi project test kernels in seconds.",
+        "instance": "Pro1-X: sfos-boot-once.sh plus an initramfs that restores extlinux.conf, sfos-kernel-install.sh (from SailfishOS) and sfos-kernel-install-from-nixos.sh (from NixOS), qx1050-blackbox.service. Mechanism in boot.json.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "Pro1-X port repo port/scripts/sfos-boot-once.sh, port/scripts/sfos-kernel-install-from-nixos.sh; https://asahilinux.org/docs/ (fast loop, reported)"
+      },
+      {
+        "title": "Start on the newest mainline release and rebase every release",
+        "general": "A kernel chosen for a port tends to stay for years, so start on the newest stable mainline rather than the version an existing community build uses, and rebase and retest on every release (about nine weeks). Tracking -rc and linux-next on the device surfaces regressions while they are cheap.",
+        "instance": "Pro1-X: moWerk asked on 2026-10-23 to aim at 7.3 instead of 7.1 because 'a once ported kernel sticks for a while' (an AsteroidOS precedent had a wanted feature only in a newer kernel); rebased to 7.3 on 2026-10-26 and test-applied to the 7.4 merge window.",
+        "confidence": "reported",
+        "date": "2026-10-23",
+        "source": "moWerk 2026-10-23 19:46; https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf (Luca Weiss, FOSDEM 2025); https://bootlin.com/pub/conferences/2014/elce/petazzoni-soc-mainlining-lessons-learned/petazzoni-soc-mainlining-lessons-learned.pdf (Thomas Petazzoni, CC BY-SA 3.0)"
+      },
+      {
+        "title": "Record exactly what ran; never overstate a test",
+        "general": "In commit messages and notes record which kernel and DTB ran, which mechanism (bind mount versus packaged), and whether it ran in the app or only in a pipeline test. Check upstream merge claims against the source: which release, who applied it.",
+        "instance": "Pro1-X: the Venus commit was corrected to 'tested by bind-mounting 6.0.55 with the old DTB'; an upstream note was corrected from 'merged for 7.3' to 'DT patches applied by Bjorn Andersson on 2026-07-08'.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-24 20:10, 2026-10-25 01:44"
+      },
+      {
+        "title": "Write down dead ends as they happen and keep package sources in the port repo",
+        "general": "Record the traps met (packaging that ignores patches, what an RFC leaves out, accidental 'working' states, mechanical noises) in the port's notes at the moment they are found, and copy package specs, patches and tuning files into the port repo: build directories outside version control are invisible to a successor.",
+        "instance": "Pro1-X port notes/external-packages.md 'Pitfalls met on the way' and patches/libcamera/, 2026-10-25.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "Pro1-X port repo commits 5cb6b76, de4c9c1, 36092f3"
+      },
+      {
+        "title": "Ask about parallel work on the same device before proposing an adaptation",
+        "general": "Check the distribution's build service and GitHub organisations for existing projects for the same device, and coordinate with their maintainer before upstreaming a new adaptation.",
+        "instance": "piggz pushed sailfish-on-fxtecpro1/*-halium-qx1050 (Halium 4.19, 2026-10-03/04, OBS nemo:devel:hw:fxtec:halium-qx1050), and an empty nemo:devel:hw:fxtec:qx1050 project exists; a mainline qx1050 adaptation needs his agreement first.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "packaging research report 2026-10-23 19:17"
+      },
+      {
+        "title": "Bring-up proves function; test reliability over days",
+        "general": "Users judge reliability (suspend cycles, long uptime, battery drain), not first-boot function. Define done per subsystem to include multi-day use, and plan explicitly for the usually missing pieces: camera, fuel gauge, calls and mobile data.",
+        "instance": "Pro1-X as of 2026-10-27: no suspend or multi-day measurements yet; the longest recorded uptime with a full hardware check is 3 h 44 min on 7.3.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://archive.fosdem.org/2025/events/attachments/fosdem-2025-4836-kernel-support-for-mobile-linux-the-missing-20-/slides/238102/FOSDEM_20_9m2KNpA.pdf (Luca Weiss, FOSDEM 2025)"
+      },
+      {
+        "title": "Commit every small success, squash later",
+        "general": "Commit each small working step during bring-up and squash into a clean series later; it keeps rollback cheap and makes the history readable for the upstream split.",
+        "instance": "General guidance (Fairphone 4 bring-up); the Pro1-X port repo follows it.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://archive.fosdem.org/2023/schedule/event/mainline_on_the_fairphone4/ (Luca Weiss, FOSDEM 2023)"
+      },
+      {
+        "title": "An agent's safety check may refuse build wrappers that contain rm -rf",
+        "general": "An autonomous agent's permission check can refuse a build wrapper that clears its build directory with rm -rf, leaving the person to run it. Allow the script explicitly in the permissions, or avoid rm -rf in wrappers.",
+        "instance": "sfos-mb2-build.sh, 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-26"
+      },
+      {
+        "title": "Measure Wi-Fi with interface counters, not a client's own timer",
+        "general": "Without iperf3 on the device, curl HTTP down and ssh (fast cipher) up against a wired host work; check against /sys/class/net/<if>/statistics rx_bytes/tx_bytes. curl -T to telnet:// stalled and gave meaningless upload numbers; curl's speed_download once read 340 Mbit/s where the counters said 195.",
+        "instance": "Pro1-X ath10k WCN3950 1x1, 2026-10-30: 5 GHz VHT80 ~195 down / 210-225 up at -70..-80 dBm; 2.4 GHz HT40 ~97 down / 80 up.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "port README Wi-Fi row"
+      }
+    ]
+  }
 }

@@ -38,7 +38,7 @@ project, so an agent carries the instructions with it.
 | `AGENTS.md` | instructions for an LLM coding agent writing, porting or refactoring a SailfishOS app. The practice from [PRACTICE.md](https://github.com/moWerk/llmgd-specs/blob/main/PRACTICE.md) plus the platform and app findings from this folder, condensed into one file to copy into a project root and fill in at section 0 |
 | `design_guide.json` | the platform's design and UX specification in 25 sections: principles, the five system views, gestures, navigation, Theme as the single style source, the colour signal, Jolla's own list of porting pitfalls, 85 Silica component names, app and system icons, ambience, Jolla's Definition of Done, one credited community guide, and a derived refactor checklist |
 | `system_icons.json` | 717 platform theme icon names by size class, so a session can check that a name exists instead of inventing one. All 717 resolved on a 5.1.0.11 device |
-| `app_development.json` | what porting a QML app actually took: Qt 5.6 gaps, the logging trap, the project skeleton, cover, icons, Harbour store rules, tall-screen layout, audio capture, sensors through the Camera permission |
+| `app_development.json` | what porting a QML app actually took: Qt 5.6 gaps, the logging trap, the project skeleton, cover, icons, Harbour store rules, tall-screen layout, audio capture, sensors through the Camera permission, the sensorfw step counter |
 | `mainline_porting.json` | SailfishOS on a mainline kernel: what the ecosystem already provides, and the ngfd, PulseAudio, mce and oFono traps with their fixes |
 | `pro1x_device_notes.json` | the F(x)tec Pro1-X as a SailfishOS device: the hybris port that exists, installing it from stock Android, the upgrade path, and the state of mainline kernel support for the Pro1 and the Pro1-X |
 
@@ -46,8 +46,9 @@ project, so an agent carries the instructions with it.
 
 This corpus came out of porting SailfishOS 5.2 onto the F(x)tec Pro1-X
 (Qualcomm SM6115) on its own 7.3 kernel, with no vendor kernel, no libhybris
-and no halium. 270 labelled entries
-across fourteen chapter files: 224 confirmed, 30 reported by a named source, 16
+and no halium. 323 labelled entries across fourteen chapter files, counted as
+the objects that carry a `confidence` field: 267 confirmed, 6 confirmed with a
+stated qualification in the label itself, 30 reported by a named source, 20
 inferred.
 
 | file | holds |
@@ -58,10 +59,10 @@ inferred.
 | `boot.json` | bootloader, extlinux, initramfs, dual boot, rootfs layout, recovery after a crash |
 | `kernel.json` | building and configuring a kernel outside a distribution build system, device tree, modules, driver bugs met |
 | `firmware_remoteproc.json` | firmware files, remoteprocs (modem, adsp, cdsp), rmtfs, tqftpserv, recovery settings |
-| `modem.json` | QRTR and QMI services, SIM provisioning, the data path (IPA, rmnet, QMAP), voice |
+| `modem.json` | QRTR and QMI services, SIM provisioning, the data path (IPA, rmnet, QMAP), voice, and GNSS through the modem's QMI LOC service |
 | `audio.json` | DSP audio (q6), codecs, UCM2, the sound server and call audio |
 | `camera.json` | camss, sensor and lens drivers, libcamera pipeline and software ISP, autofocus, frame rates |
-| `sensors.json` | sensors behind a DSP (SSC), hexagonrpc, libssc, the framework adaptors |
+| `sensors.json` | sensors behind a DSP (SSC), hexagonrpc, libssc, the step counter, the framework adaptors |
 | `display_input_power.json` | GPU and display, keyboards and touch, haptics, battery and charger, USB gadget networking |
 | `packaging.json` | building userspace for the target OS: SDK, toolchains, packages the OS lacks, version locks across upgrades |
 | `userspace_sailfishos.json` | what SailfishOS middleware expects on mainline and what had to change. Another OS gets its own file, never a mix |

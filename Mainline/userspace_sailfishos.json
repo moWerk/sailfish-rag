@@ -151,6 +151,14 @@
         "confidence": "confirmed",
         "date": "2026-10-23",
         "source": "SailfishOS/mainline_porting.json mce.keyboard_backlight; port log 2026-10-23 19:25, 23:47; Pro1-X port repo port/notes/research/research-keyboard.md"
+      },
+      {
+        "title": "mce charge limit needs only an on/off control file",
+        "general": "SailfishOS implements the charge limit in mce (Settings > Battery appears when mce has a charging control): it writes enable/disable values to a control file at its thresholds; it probes battery_charging_enabled, charging_enabled and input_suspend under /sys/class/power_supply/battery, or [Charging] ControlPath/EnableValue/DisableValue in its config. mce looks for the file once at start: if the driver providing it loads later, the limit silently disappears; order mce after it (ExecStartPre wait). Kernel side: a writable attribute toggling the charger's charge-enable bit; disabling charging (not the input) keeps the phone powered from USB.",
+        "instance": "Pro1-X: PMI632 CHGR_ENABLE_CMD 0x1042 bit 0 as charging_enabled on the pro1x-charger-icl device (patch 0017); the vendor kernel on the hybris port offers input_suspend. Verified: charging stops at the set 80 % (current ~0 mA, status Not charging after patch 0020).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
       }
     ],
     "camera_app": [
@@ -283,6 +291,14 @@
         "confidence": "confirmed",
         "date": "2026-10-28",
         "source": "port repo github.com/moWerk/sailfishos-pro1x-mainline; device session 2026-10-28"
+      },
+      {
+        "title": "libssc blocks its caller's main loop while the sensor service is missing",
+        "general": "libssc 0.4.4 waits for the SSC 'registry' sensor with g_usleep(1 s) inside the report callback, up to 100 times, and counts other clients' discovery replies as failed polls. In sensorfwd this freezes the event loop: clients (lipstick's orientation sensor) stall, lipstick took 25 s to start instead of 7 s. Fix: ignore non-'registry' replies while waiting, retry from g_timeout_add_seconds. And start hexagonrpcd at boot, or the service never appears.",
+        "instance": "Pro1-X: patch 0002 in port packages/libssc (0.4.4-2); lipstick restart 25.1 s -> 7.0 s; hexagonrpcd enabled at boot 2026-10-28.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
       }
     ],
     "connectivity": [
@@ -361,6 +377,26 @@
         "confidence": "confirmed",
         "date": "2026-10-03",
         "source": "SailfishOS/device_access_and_tooling.json busybox_userland_traps"
+      }
+    ],
+    "usb_moded": [
+      {
+        "title": "usb-moded on a mainline kernel: configfs, a 'usb' power supply, rndis0",
+        "general": "A precomposed legacy gadget built into the kernel (g_cdc, g_ether) owns the UDC, so usb-moded cannot run and Settings offers only 'charging only'; no plug notification either (mce takes the cable state from usb-moded). Build the legacy gadget as a module and CONFIG_USB_CONFIGFS=y; create the configfs gadget before usb-moded starts (on hybris Android's init does it): gadget g1, configs/b.1, functions rndis.usb0 and ffs.mtp, FunctionFS mounted at /dev/mtp; name the functions in [configfs] (function_rndis, function_mtp). usb-moded detects the cable through /sys/class/power_supply/usb (online, type USB / USB_DCP / USB_CDP); a Type-C tcpm source supply does not show a PC host as online. Developer mode configures interface rndis0: set the RNDIS function's ifname to 'rndis%d' right after mkdir, before the first bind (later writes do not rename).",
+        "instance": "Pro1-X 7.3 SailfishOS 5.2.0.22: plug notification and sound, developer mode 192.168.2.15 (host got .5), MTP visible as 2931:0a07 'Jolla Oy Phone MTP'. usb-moded-mtp-mode-android-ffs supplies the ffs MTP mode.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
+      }
+    ],
+    "boot": [
+      {
+        "title": "Keep the user session independent of slow modem and Wi-Fi bring-up",
+        "general": "systemd-user-sessions orders after network.target; ofono is WantedBy network.target and a modem-preparation unit ordered before ofono therefore delays the whole UI until the modem is ready (here up to a minute, the modem restarts once at boot). Mask network.target.wants/ofono.service in /etc and let the preparation unit (Type=simple) start ofono when done. For a late Wi-Fi interface that needs a stable MAC before connman files networks, do not hold connman (that again delays the session): set the MAC from a udev-started unit and restart connman once. On SailfishOS systemctl is /usr/bin/systemctl (not /bin).",
+        "instance": "Pro1-X: user@100000 at 14.4 s instead of 56.8 s; Wi-Fi reconnects with the saved network under the stable identity.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
       }
     ]
   }

@@ -1,119 +1,169 @@
 {
- "display_input_power": {
-  "note": "GPU and display, keyboard, touch and switches, haptics, battery and charger, and USB gadget networking on a mainline phone. Instance: F(x)tec Pro1-X (SM6115): BOE BF060Y8M-AJ0 DSI panel, Adreno 610 under Mesa freedreno, Goodix touch, AW9523B-based sliding keyboard (driver from the NixOS port) with a hall slide switch and a GPIO keyboard LED, AW86224 haptics, PMI632 battery read by a board driver, a built-in USB CDC gadget. State as of 2026-10-27: display, GPU (GLES 3.2), touch with double-tap-to-wake, keyboard, slide switch, keyboard light, haptics and charging work on SailfishOS; GPU and memory throughput are below the hybris vendor stack; the panel logs a harmless backlight EINVAL; usb-moded cannot run beside the built-in gadget. SailfishOS daemon conventions (mce, ngfd) are in userspace_sailfishos.json.",
-  "display_gpu": [
-   {
-    "title": "Run the compositor on DRM/KMS with Mesa: eglfs_kms for Qt-based shells",
-    "general": "A native port of a Qt-based phone shell runs its compositor on Qt eglfs with the KMS integration over Mesa GBM. Check that the Mesa build lists the GPU in its driver table before anything else. For SailfishOS lipstick: /var/lib/environment/compositor/*.conf with EGL_PLATFORM=drm, QT_QPA_PLATFORM=eglfs, QT_QPA_EGLFS_INTEGRATION=eglfs_kms, QT_QPA_EGLFS_KMS_CONFIG=/etc/eglfs-config.json (device /dev/dri/card0, hwcursor false) and the physical size, plus mesa (dri, EGL, GLESv2, gbm, wayland-egl), qt5-qtwayland-wayland_egl and qtscenegraph-adaptation from the shared native middleware repo.",
-    "instance": "Pro1-X SailfishOS 5.1 on 7.1 (2026-10-23): native-common mesa 25.1.8 (libgallium) lists FD610 in its freedreno table; the Silica UI came up on the first successful boot with the config adapted from the PinePhone and victara ports (freedreno config credited to Mister_Magister's Moto X 2014 port); 68x136 mm physical size. Benchmark on 5.2: FD610 GLES 3.2.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 10:22 (mesa rpm listing), 12:22 (Silica up); Pro1-X port repo port/droid-config-qx1050/sparse/var/lib/environment/compositor/droid-hal-device.conf; SailfishOS/devices.json fxtec_mainline_2026.sfos_on_mainline"
-   },
-   {
-    "title": "Benchmark the mainline port against the vendor stack on the same SoC early",
-    "general": "Run the same benchmark on the mainline port and on a vendor-kernel (hybris) port of the same device early: it separates CPU, memory, storage and GPU deficits. Expect GPU and memory throughput below the vendor stack in early freedreno bring-up. Check storage link speed and devfreq separately from file-path throughput.",
-    "instance": "Pro1-X Benchymark 2.2.0, 2026-10-23 (mainline 7.1 freedreno against hybris 4.19 with the vendor blob, median of 4): CPU prime/single 0.99/0.98, memory 0.59, storage read/write 0.26/0.29, GPU stages 0.15-0.82 (Shader heavy 0.15, Cascade 0.26), Benchy small 1.42. UFS raw direct read 438 MB/s with UFS devfreq scaling 50 to 200 MHz under load, so the slow storage figure is the file/write path, not the link (confirmed). Low memory throughput suggests DDR/interconnect (bwmon) not scaling, and Shader heavy the ir3 compiler (both inferred). The UI feels 20-30 fps with occasional tearing; compositor-only gestures are smooth, transitions and lists stutter.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 'First Benchymark on mainline' 2026-10-23; moWerk 2026-10-23 19:10; Pro1-X port repo port/README.md"
-   },
-   {
-    "title": "A DSI panel at 61 Hz instead of 60 can cause ghost touches",
-    "general": "A pixel clock that drives the panel slightly above 60 Hz can produce touch ghost events; set the pixel clock for exactly 60 Hz.",
-    "instance": "Pro1-X BOE BF060Y8M-AJ0: 165268 kHz gives 61.00 Hz, 162559 kHz gives 60 Hz (pro1x-dsi patch).",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/notes/upstream.md, port/kernel/HANDOVER.md"
-   },
-   {
-    "title": "DCS backlight writes after blanking return EINVAL",
-    "general": "A DSI panel with DCS backlight control can reject brightness writes while the panel is blanked ('Failed to write display brightness: -22' in the kernel log, EINVAL to userspace). It is harmless log noise, but a display daemon that fades the backlight around blanking may show a visible jump.",
-    "instance": "Pro1-X BOE bf060y8m on 7.1 and 7.3: once in hours of uptime in the kernel log; SailfishOS mce (1.116.5) logs 'can't flush .../brightness' for /sys/class/backlight/5e94000.dsi.0/brightness, and the dim fade jumps to full brightness once per power-key press. Open.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/mainline_porting.json mce.backlight_write_einval; moWerk 2026-10-23 19:46; Pro1-X port repo port/notes/upstream.md"
-   },
-   {
-    "title": "Generate DSI panel drivers from the downstream DT",
-    "general": "Extract the DTB from the stock boot image and generate the mainline DRM panel driver with linux-mdss-dsi-panel-driver-generator instead of hand-porting init sequences; verify the output, since wrong init commands can leave the panel dark, and keep simple-framebuffer as the fallback until the DSI driver works. Phones are often multi-sourced for panels and touch: detect the variant in the bootloader and patch the DT rather than in the kernel.",
-    "instance": "General guidance; the Pro1-X panel driver (boe,bf060y8m-aj0) has been upstream since v5.17.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://github.com/msm8916-mainline/linux-mdss-dsi-panel-driver-generator (msm8916-mainline, GPL-2.0); https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/ (Nikita Travkin)"
-   }
-  ],
-  "input": [
-   {
-    "title": "Capture the mainline keyboard's keycodes before reusing an old layout",
-    "general": "xkb layouts written for a vendor kernel driver may assume different keycodes. Capture the mainline driver's codes with a key monitor (keyd monitor, evtest) while someone presses each keycap, then decide which layout fits.",
-    "instance": "Pro1-X mainline pro1x-keyboard driver, 2026-10-23: with stock xkb de(nodeadkeys) every QWERTZ letter key is right (u-umlaut on [, + on ], o-umlaut on ;, a-umlaut on ', < on 102nd, y/z swapped as expected). The 2019/2020 xkeyboard-config-pro1 for the hybris Pro1 used shifted codes and is not reusable as-is; the Pro1-X QWERTZ Fn legends also differ from the Pro1 table.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 01:28-01:37 (keyd monitor capture)"
-   },
-   {
-    "title": "Report a dedicated Fn key as RIGHTALT and put its legends on xkb level 3",
-    "general": "xkb only handles keycodes up to 255, so a Fn key reported as KEY_FN (464) cannot be a level modifier; Qt's built-in evdev keyboard handler (used without libinput) drops scancodes missing from its keymap entirely. Map the Fn key to KEY_RIGHTALT in the DT keymap and put the Fn legends on level 3 in one xkb symbols file selected by the shell's layout setting, instead of forking xkeyboard-config. Validate the symbols on the host with xkbcli compile-keymap. Because this remap serves one OS's input stack, keep it out of upstream DT.",
-    "instance": "Pro1-X: two yellow Fn keys are gpio-keys with KEY_FN; the SailfishOS-only DT patch maps them to KEY_RIGHTALT; symbols fxtec_vndr/pro1x (includes de(nodeadkeys), level 3 = Fn legends) selected through lipstick dconf /desktop/lipstick-jolla-home/layout and variant (alternative: a custom qmap through LIPSTICK_OPTIONS). The hybris Pro1 used RIGHTALT the same way (level3(ralt_switch)).",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "xkbcli validation 2026-10-23 21:41-21:43; Pro1-X port repo port/notes/research/research-keyboard.md, port/README.md"
-   },
-   {
-    "title": "Keyboard LED polarity: check the trigger logic at rest before flipping a GPIO",
-    "general": "When an LED appears inverted, first check the trigger logic at rest (switch semantics, daemon policy, UI state) before flipping the LED GPIO polarity; two inversions can cancel out or double up. Separate the real DT bug from OS workarounds once found.",
-    "instance": "Pro1-X keyboard backlight on tlmm 103: on NixOS writing 1 to /sys/class/leds/white:kbd_backlight lit it with the stock DT (2026-10-23); after a 'reversed' report the SailfishOS DT flipped it to ACTIVE_LOW, and later the real inversion was found in the slide-switch semantics, which left doubt whether the LED flip was right. The kernel handover of 2026-10-26 classifies the LED as active-low, a real and upstreamable DT bug, unlike the slide inversion and the Fn remap.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-23 01:22, 21:01, 23:47; Pro1-X port repo port/kernel/HANDOVER.md, port/notes/upstream.md"
-   },
-   {
-    "title": "Test wake gestures early",
-    "general": "Mainline touch drivers may support wake gestures such as double-tap-to-wake without vendor userspace; test them on the first UI boot.",
-    "instance": "Pro1-X SailfishOS on 7.1 (2026-10-23): double-tap-to-wake worked reliably (three times in a row), unexpectedly; it does not on the Jolla C2 hybris port.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "moWerk test round 2026-10-23 19:46"
-   }
-  ],
-  "haptics": [
-   {
-    "title": "An accepted FF_RUMBLE can still be unfelt: motor strength is a driver parameter",
-    "general": "A force-feedback play the kernel accepts can still be too weak to feel; the motor driver's module parameters (gain, drive level) decide. Test the motor with a direct EVIOCSFF upload from a small static tool before blaming the OS's feedback stack, and ship the working values as a modprobe.d option.",
-    "instance": "Pro1-X AW86224 (mainline-style driver, FF_RUMBLE only, 16 memless slots): driver defaults gain 6 / drive 59 not felt; d2s_gain=7 drv2_lvl=100 felt (stronger warms the motor); /etc/modprobe.d/aw86224.conf; tested with a static musl ffrumble tool, 2026-10-23.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "SailfishOS/mainline_porting.json vibration_ngfd.strength; port log 2026-10-23 21:00-21:05; Pro1-X port repo port/droid-config-qx1050/sparse/etc/modprobe.d/aw86224.conf"
-   }
-  ],
-  "power": [
-   {
-    "title": "Battery and charger need their own drivers; a board-specific estimator is not an upstream route",
-    "general": "Battery level and charging need drivers in the device series, and they must survive any derived kernel config (see the lost-option guard in kernel.json). Where the PMIC fuel-gauge path is not supported upstream, a board driver estimating the level from PMIC ADC readings plus a charger input-limit/watchdog driver works, but the real upstream path is the PMIC's ADC and fuel-gauge support.",
-    "instance": "Pro1-X PMI632: pro1x-power (+897 lines: pro1x-adc-battery, pro1x-icl); battery 99 % and charging read correctly; the first SailfishOS-derived config lost the battery-level driver (2026-10-23).",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-23 13:16, 16:05; Pro1-X port repo port/kernel/HANDOVER.md"
-   }
-  ],
-  "usb": [
-   {
-    "title": "A built-in CDC composite gadget gives ssh from the first boot, but blocks the OS's USB mode daemon",
-    "general": "A precomposed gadget built into the kernel (CONFIG_USB_CDC_COMPOSITE=y: serial ttyGS0 plus ECM usb0, fixed MACs) gives network and serial for any OS on the device, and IPv6 link-local ssh works before any DHCP. Give usb0 a static address (busybox udhcpd for clients) and open INPUT on it: a firewall that drops traffic on interfaces it does not manage (SailfishOS connman sets INPUT DROP) makes the gadget unreachable otherwise. The price: the OS's own USB mode daemon (usb-moded on SailfishOS: MTP, the mode menu) cannot run, and units that wait for it fail (policies-setup.service). Keep it during bring-up and turn the option off in the release kernel.",
-    "instance": "Pro1-X 7.1/7.3: g_cdc built in, usb0 at 172.16.42.1 with clients .11-.20 (the NixOS gadget default), qx1050-usb-net.service; the phone showed the address but the host could not ping until qx1050-usb-net.sh accepted usb0, then ping6 0.6 ms; the link-local address answers under NixOS and SailfishOS with different host keys; no UI reaction to USB plug on SailfishOS.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 10:26, 12:48-12:55, 13:54; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-usb-net.sh, port/kernel/pro1x.fragment, port/notes/sfos-5.2-upgrade.md"
-   },
-   {
-    "title": "Put the kernel console on the USB serial gadget",
-    "general": "With a serial gadget, add console=ttyGS0 to the command line so early boot can be read on the host (/dev/ttyACM*) when the display is useless.",
-    "instance": "Pro1-X NixOS command line carries console=ttyGS0; in this period the USB network came up during a UI hang and was used instead, so the serial console itself was not exercised.",
-    "confidence": "inferred",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 21:35-21:36"
-   }
-  ]
- }
+  "display_input_power": {
+    "note": "GPU and display, keyboard, touch and switches, haptics, battery and charger, and USB gadget networking on a mainline phone. Instance: F(x)tec Pro1-X (SM6115): BOE BF060Y8M-AJ0 DSI panel, Adreno 610 under Mesa freedreno, Goodix touch, AW9523B-based sliding keyboard (driver from the NixOS port) with a hall slide switch and a GPIO keyboard LED, AW86224 haptics, PMI632 battery read by a board driver, a built-in USB CDC gadget. State as of 2026-10-27: display, GPU (GLES 3.2), touch with double-tap-to-wake, keyboard, slide switch, keyboard light, haptics and charging work on SailfishOS; GPU and memory throughput are below the hybris vendor stack; the panel logs a harmless backlight EINVAL; usb-moded cannot run beside the built-in gadget. SailfishOS daemon conventions (mce, ngfd) are in userspace_sailfishos.json.",
+    "display_gpu": [
+      {
+        "title": "Run the compositor on DRM/KMS with Mesa: eglfs_kms for Qt-based shells",
+        "general": "A native port of a Qt-based phone shell runs its compositor on Qt eglfs with the KMS integration over Mesa GBM. Check that the Mesa build lists the GPU in its driver table before anything else. For SailfishOS lipstick: /var/lib/environment/compositor/*.conf with EGL_PLATFORM=drm, QT_QPA_PLATFORM=eglfs, QT_QPA_EGLFS_INTEGRATION=eglfs_kms, QT_QPA_EGLFS_KMS_CONFIG=/etc/eglfs-config.json (device /dev/dri/card0, hwcursor false) and the physical size, plus mesa (dri, EGL, GLESv2, gbm, wayland-egl), qt5-qtwayland-wayland_egl and qtscenegraph-adaptation from the shared native middleware repo.",
+        "instance": "Pro1-X SailfishOS 5.1 on 7.1 (2026-10-23): native-common mesa 25.1.8 (libgallium) lists FD610 in its freedreno table; the Silica UI came up on the first successful boot with the config adapted from the PinePhone and victara ports (freedreno config credited to Mister_Magister's Moto X 2014 port); 68x136 mm physical size. Benchmark on 5.2: FD610 GLES 3.2.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 10:22 (mesa rpm listing), 12:22 (Silica up); Pro1-X port repo port/droid-config-qx1050/sparse/var/lib/environment/compositor/droid-hal-device.conf; SailfishOS/devices.json fxtec_mainline_2026.sfos_on_mainline"
+      },
+      {
+        "title": "Benchmark the mainline port against the vendor stack on the same SoC early",
+        "general": "Run the same benchmark on the mainline port and on a vendor-kernel (hybris) port of the same device early: it separates CPU, memory, storage and GPU deficits. Expect GPU and memory throughput below the vendor stack in early freedreno bring-up. Check storage link speed and devfreq separately from file-path throughput.",
+        "instance": "Pro1-X Benchymark 2.2.0, 2026-10-23 (mainline 7.1 freedreno against hybris 4.19 with the vendor blob, median of 4): CPU prime/single 0.99/0.98, memory 0.59, storage read/write 0.26/0.29, GPU stages 0.15-0.82 (Shader heavy 0.15, Cascade 0.26), Benchy small 1.42. UFS raw direct read 438 MB/s with UFS devfreq scaling 50 to 200 MHz under load, so the slow storage figure is the file/write path, not the link (confirmed). Low memory throughput suggests DDR/interconnect (bwmon) not scaling, and Shader heavy the ir3 compiler (both inferred). The UI feels 20-30 fps with occasional tearing; compositor-only gestures are smooth, transitions and lists stutter.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 'First Benchymark on mainline' 2026-10-23; moWerk 2026-10-23 19:10; Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "A DSI panel at 61 Hz instead of 60 can cause ghost touches",
+        "general": "A pixel clock that drives the panel slightly above 60 Hz can produce touch ghost events; set the pixel clock for exactly 60 Hz.",
+        "instance": "Pro1-X BOE BF060Y8M-AJ0: 165268 kHz gives 61.00 Hz, 162559 kHz gives 60 Hz (pro1x-dsi patch).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/notes/upstream.md, port/kernel/HANDOVER.md"
+      },
+      {
+        "title": "DCS backlight writes after blanking return EINVAL",
+        "general": "A DSI panel with DCS backlight control can reject brightness writes while the panel is blanked ('Failed to write display brightness: -22' in the kernel log, EINVAL to userspace). It is harmless log noise,.",
+        "instance": "Pro1-X BOE bf060y8m on 7.1 and 7.3: once in hours of uptime in the kernel log; SailfishOS mce (1.116.5) logs 'can't flush .../brightness' for /sys/class/backlight/5e94000.dsi.0/brightness. The visible flash at blank had another cause (see the .disable entry).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/mainline_porting.json mce.backlight_write_einval; moWerk 2026-10-23 19:46; Pro1-X port repo port/notes/upstream.md"
+      },
+      {
+        "title": "Video-mode DSI panel: send display off from .disable, not unprepare",
+        "general": "On a video-mode DSI panel, the display-off DCS command must go out while the host still streams video (drm_panel .disable). Sent from .unprepare, after the encoder has stopped the stream, the panel scans out garbage for a frame: a full-brightness, colour-shifted frame with horizontal lines flashes after the userspace fade. Keep only sleep-in in unprepare. To find it, film the blank (30 fps is enough) and plot mean luma per frame (ffprobe signalstats YAVG): the fade, then one bright frame, then black.",
+        "instance": "Pro1-X BOE BF060Y8M-AJ0 (sw43404) on 7.3, SailfishOS: one bright corrupted frame on every display blank. Fixed first try by kernel patch 0023 (new .disable callback), confirmed by moWerk 2026-10-29. This, not the backlight EINVAL, was the visible 'fade jump'.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/kernel/patches-7.3/0023-*, commit 83f7399; moWerk video 2026-10-29 11:26"
+      },
+      {
+        "title": "Generate DSI panel drivers from the downstream DT",
+        "general": "Extract the DTB from the stock boot image and generate the mainline DRM panel driver with linux-mdss-dsi-panel-driver-generator instead of hand-porting init sequences; verify the output, since wrong init commands can leave the panel dark, and keep simple-framebuffer as the fallback until the DSI driver works. Phones are often multi-sourced for panels and touch: detect the variant in the bootloader and patch the DT rather than in the kernel.",
+        "instance": "General guidance; the Pro1-X panel driver (boe,bf060y8m-aj0) has been upstream since v5.17.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://github.com/msm8916-mainline/linux-mdss-dsi-panel-driver-generator (msm8916-mainline, GPL-2.0); https://archive.fosdem.org/2022/schedule/event/mobile_kernel_snapdragon_410/ (Nikita Travkin)"
+      },
+      {
+        "title": "Check that the GPU votes for memory bandwidth (interconnect + opp-peak-kBps)",
+        "general": "An Adreno GPU node without an interconnects path and without opp-peak-kBps in its OPPs never votes DDR bandwidth: the GPU clocks up to its top OPP but DDR stays at whatever CPU and display request, and bandwidth-bound rendering (overdraw, large textures, many layers) is slow and erratic. Check /sys/kernel/debug/interconnect/interconnect_summary under load (the GPU master, e.g. qnm_gpu, must show a peak vote). Copy the pattern from a sibling SoC upstream (MASTER_GFX3D/GRAPHICS_3D -> SLAVE_EBI, per-OPP peak bandwidth). Measure with a fixed-load benchmark, 3 runs each, fresh boot for both sides: the first run of a starved GPU can look fine before it drops.",
+        "instance": "Pro1-X SM6115 Adreno 610, kernel 7.3, Mesa 25.1.8 freedreno, 2026-10-28: qnm_gpu 0/0 before; agatti (QCM2290) values 1.72/2.93/3.88/6.88 GB/s added (port kernel patch 0021). Benchymark: Benchy large +25 % and stable, Overdraw +37 %, Shader light +8 %, Icon storm +6 %, Shader heavy unchanged. GPU frequency was not the limit (devfreq at 950 MHz in both).",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline notes/gpu-perf.md, kernel/patches-7.3/0021"
+      },
+      {
+        "title": "Multicolor notification LED on SailfishOS: mce-plugin-libhybris needs a multicolor backend; LPG hardware blink is unusable",
+        "general": "Mainline DTs describe RGB indicators as one multicolor LED class device (multi_intensity, multi_index). SailfishOS's mce drives indicator LEDs on native ports through mce-plugin-libhybris (builds without libhybris: %bcond_with hybris) and its sysfs backends, which all expect one LED device per color ('vanilla' takes Red/Green/BlueDirectory). Either split the DT into single LEDs or add a backend that writes multi_intensity and brightness. Without a blink callback mce shows blinking patterns steadily on battery (sw breathing only while charging: 'Led breathing battery limit'); a backend can blink with its own timer. Do not use the kernel timer trigger on qcom-spmi-lpg multicolor LEDs: lpg_blink_mc_set runs every channel at the same duty cycle regardless of multi_intensity and out of phase (a color sweep). Many mce patterns show only with the display off; blank it (mcetool --blank-screen, check 'Display state') before testing.",
+        "instance": "Pro1-X PMI632 LPG rgb:status, SailfishOS 5.2, mce-plugin-libhybris 1.14.5 + multicolor backend (port build 1.14.5+qx1050.3): calls green, SMS blue, notifications cyan blinking, battery full breathing white, verified by moWerk 2026-10-29. The timer trigger test showed a red/green/blue sweep for a green blink.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/patches/mce-plugin-libhybris, commit 53d590a; notes/upstream.md"
+      },
+      {
+        "title": "A panel on-sequence without a brightness write flashes at the power-on level on every wake",
+        "general": "drm_panel_enable() enables the panel backlight only after the panel's enable/prepare sequence; if that sequence never sends DCS set_display_brightness, the panel shows its power-on level from display on until the backlight core writes the stored level, and the compositor then fades up: bright, dim, ramp. Send the backlight's level (backlight_get_brightness(), 0 while disabled) before display on.",
+        "instance": "Pro1-X BOE BF060Y8M-AJ0, kernel patch 0030, 2026-10-30: author saw the wave on every wake; fix built, boot test pending.",
+        "confidence": "inferred",
+        "date": "2026-10-30",
+        "source": "port kernel/patches-7.3/0030"
+      }
+    ],
+    "input": [
+      {
+        "title": "Capture the mainline keyboard's keycodes before reusing an old layout",
+        "general": "xkb layouts written for a vendor kernel driver may assume different keycodes. Capture the mainline driver's codes with a key monitor (keyd monitor, evtest) while someone presses each keycap, then decide which layout fits.",
+        "instance": "Pro1-X mainline pro1x-keyboard driver, 2026-10-23: with stock xkb de(nodeadkeys) every QWERTZ letter key is right (u-umlaut on [, + on ], o-umlaut on ;, a-umlaut on ', < on 102nd, y/z swapped as expected). The 2019/2020 xkeyboard-config-pro1 for the hybris Pro1 used shifted codes and is not reusable as-is; the Pro1-X QWERTZ Fn legends also differ from the Pro1 table.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 01:28-01:37 (keyd monitor capture)"
+      },
+      {
+        "title": "Report a dedicated Fn key as RIGHTALT and put its legends on xkb level 3",
+        "general": "xkb only handles keycodes up to 255, so a Fn key reported as KEY_FN (464) cannot be a level modifier; Qt's built-in evdev keyboard handler (used without libinput) drops scancodes missing from its keymap entirely. Map the Fn key to KEY_RIGHTALT in the DT keymap and put the Fn legends on level 3 in one xkb symbols file selected by the shell's layout setting, instead of forking xkeyboard-config. Validate the symbols on the host with xkbcli compile-keymap. Because this remap serves one OS's input stack, keep it out of upstream DT.",
+        "instance": "Pro1-X: two yellow Fn keys are gpio-keys with KEY_FN; the SailfishOS-only DT patch maps them to KEY_RIGHTALT; symbols fxtec_vndr/pro1x (includes de(nodeadkeys), level 3 = Fn legends) selected through lipstick dconf /desktop/lipstick-jolla-home/layout and variant (alternative: a custom qmap through LIPSTICK_OPTIONS). The hybris Pro1 used RIGHTALT the same way (level3(ralt_switch)).",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "xkbcli validation 2026-10-23 21:41-21:43; Pro1-X port repo port/notes/research/research-keyboard.md, port/README.md"
+      },
+      {
+        "title": "Keyboard LED polarity: check the trigger logic at rest before flipping a GPIO",
+        "general": "When an LED appears inverted, first check the trigger logic at rest (switch semantics, daemon policy, UI state) before flipping the LED GPIO polarity; two inversions can cancel out or double up. Separate the real DT bug from OS workarounds once found.",
+        "instance": "Pro1-X keyboard backlight on tlmm 103: on NixOS writing 1 to /sys/class/leds/white:kbd_backlight lit it with the stock DT (2026-10-23); after a 'reversed' report the SailfishOS DT flipped it to ACTIVE_LOW, and later the real inversion was found in the slide-switch semantics, which left doubt whether the LED flip was right. The kernel handover of 2026-10-26 classifies the LED as active-low, a real and upstreamable DT bug, unlike the slide inversion and the Fn remap.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-23 01:22, 21:01, 23:47; Pro1-X port repo port/kernel/HANDOVER.md, port/notes/upstream.md"
+      },
+      {
+        "title": "Test wake gestures early",
+        "general": "Mainline touch drivers may support wake gestures such as double-tap-to-wake without vendor userspace; test them on the first UI boot.",
+        "instance": "Pro1-X SailfishOS on 7.1 (2026-10-23): double-tap-to-wake worked reliably (three times in a row), unexpectedly; it does not on the Jolla C2 hybris port.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "moWerk test round 2026-10-23 19:46"
+      },
+      {
+        "title": "Two polarity inversions can cancel: invert only the signal that is wrong",
+        "general": "When a DT patch inverts both a switch and the LED it gates, the pair can look right in one state and wrong in another. Check each GPIO against its physical meaning (GPIO level vs LED lit, switch level vs slid out) separately.",
+        "instance": "Pro1-X SFOS kernel, 2026-10-30: sfos-dt made both the keyboard slide switch (needed: mce reads SW_KEYPAD_SLIDE N900-style) and the keyboard backlight LED active-low; the LED is active high, so it was lit with the keyboard closed and the display off all day. Kernel patch 0028; author confirmed.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "port kernel/patches-7.3/0028"
+      }
+    ],
+    "haptics": [
+      {
+        "title": "An accepted FF_RUMBLE can still be unfelt: motor strength is a driver parameter",
+        "general": "A force-feedback play the kernel accepts can still be too weak to feel; the motor driver's module parameters (gain, drive level) decide. Test the motor with a direct EVIOCSFF upload from a small static tool before blaming the OS's feedback stack, and ship the working values as a modprobe.d option.",
+        "instance": "Pro1-X AW86224 (mainline-style driver, FF_RUMBLE only, 16 memless slots): driver defaults gain 6 / drive 59 not felt; d2s_gain=7 drv2_lvl=100 felt (stronger warms the motor); /etc/modprobe.d/aw86224.conf; tested with a static musl ffrumble tool, 2026-10-23.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json vibration_ngfd.strength; port log 2026-10-23 21:00-21:05; Pro1-X port repo port/droid-config-qx1050/sparse/etc/modprobe.d/aw86224.conf"
+      }
+    ],
+    "power": [
+      {
+        "title": "Battery and charger need their own drivers; a board-specific estimator is not an upstream route",
+        "general": "Battery level and charging need drivers in the device series, and they must survive any derived kernel config (see the lost-option guard in kernel.json). Where the PMIC fuel-gauge path is not supported upstream, a board driver estimating the level from PMIC ADC readings plus a charger input-limit/watchdog driver works, but the real upstream path is the PMIC's ADC and fuel-gauge support.",
+        "instance": "Pro1-X PMI632: pro1x-power (+897 lines: pro1x-adc-battery, pro1x-icl); battery 99 % and charging read correctly; the first SailfishOS-derived config lost the battery-level driver (2026-10-23).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-23 13:16, 16:05; Pro1-X port repo port/kernel/HANDOVER.md"
+      }
+    ],
+    "usb": [
+      {
+        "title": "A built-in CDC composite gadget gives ssh from the first boot, but blocks the OS's USB mode daemon",
+        "general": "A precomposed gadget built into the kernel (CONFIG_USB_CDC_COMPOSITE=y: serial ttyGS0 plus ECM usb0, fixed MACs) gives network and serial for any OS on the device, and IPv6 link-local ssh works before any DHCP. Give usb0 a static address (busybox udhcpd for clients) and open INPUT on it: a firewall that drops traffic on interfaces it does not manage (SailfishOS connman sets INPUT DROP) makes the gadget unreachable otherwise. The price: the OS's own USB mode daemon (usb-moded on SailfishOS: MTP, the mode menu) cannot run, and units that wait for it fail (policies-setup.service). Keep it during bring-up and turn the option off in the release kernel.",
+        "instance": "Pro1-X 7.1/7.3: g_cdc built in, usb0 at 172.16.42.1 with clients .11-.20 (the NixOS gadget default), qx1050-usb-net.service; the phone showed the address but the host could not ping until qx1050-usb-net.sh accepted usb0, then ping6 0.6 ms; the link-local address answers under NixOS and SailfishOS with different host keys; no UI reaction to USB plug on SailfishOS.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 10:26, 12:48-12:55, 13:54; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-usb-net.sh, port/kernel/pro1x.fragment, port/notes/sfos-5.2-upgrade.md"
+      },
+      {
+        "title": "Put the kernel console on the USB serial gadget",
+        "general": "With a serial gadget, add console=ttyGS0 to the command line so early boot can be read on the host (/dev/ttyACM*) when the display is useless.",
+        "instance": "Pro1-X NixOS command line carries console=ttyGS0; in this period the USB network came up during a UI hang and was used instead, so the serial console itself was not exercised.",
+        "confidence": "inferred",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 21:35-21:36"
+      }
+    ],
+    "battery_charger": [
+      {
+        "title": "Give the charger a usb power supply and let the battery follow it",
+        "general": "Userspace (usb-moded, mce, UIs) expects /sys/class/power_supply/usb with online and type. A board charger driver that only manages the input current should still register it; with supplied_to the battery driver gets external_power_changed and can update its status at once instead of at its next poll. Report Not charging when input is present but no current flows (charge limit).",
+        "instance": "Pro1-X pro1x-charger-icl/pro1x-adc-battery (patches 0018, 0020): unplug reflected within about a second instead of up to 5-10 s.",
+        "confidence": "confirmed",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (port commits c7f24d6, a24b9e4; kernel patches 0017-0020)"
+      }
+    ]
+  }
 }

@@ -1,123 +1,179 @@
 {
- "modem": {
-  "note": "The modem on a mainline Qualcomm SoC: QRTR and QMI services, SIM provisioning, the IPA data path (DPM, WDA data format, rmnet mux links) and voice. Instance: F(x)tec Pro1-X (SM6115, modem firmware MPSS.HA.1.1 from 2021) under upstream oFono 2.12 (qrtrqmi plugin) on SailfishOS, with ModemManager 1.24.2 on NixOS as the reference stack. State as of 2026-10-27: registration on LTE, SIM, incoming and outgoing calls (signalling) and SMS receive work; mobile data works with oFono patch 0020 (DPM open port, QMAPv4, bind without client-type) on SailfishOS 5.2.0.22; call audio does not work yet (see audio.json). The SailfishOS side (slot manager, Settings, connman) is in userspace_sailfishos.json.",
-  "qrtr_qmi": [
-   {
-    "title": "Public documentation for the IPA data chain is scattered",
-    "general": "The full chain (IPA sysfs endpoint ids -> DPM open port; feature/{rx,tx}_offload -> WDA raw-ip with qmap/qmapv4/qmapv5 on endpoint embedded,1; rmnet links with the matching v4 or v5 checksum flags, never mixed) is written down nowhere in one place; it was reconstructed from the kernel IPA sysfs ABI, the qmicli man page and the libqmi changelog (DPM needs libqmi >= 1.30, QMAPv5 checksum flags >= 1.32). rmnet_ipa0 itself only offloads scatter-gather; checksum offload lives in the rmnet layer. The port's own measurement (QMAPv4 accepted, plain QMAP dead downlink) is in the entries above.",
-    "instance": "Web survey 2026-10-27; libqmi and ModemManager sites block AI crawlers, so the chain was cross-checked against ModemManager's debug log on the device instead.",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "kernel Documentation/ABI (ipa), qmicli(1), libqmi NEWS (ChromiumOS mirror)"
-   },
-   {
-    "title": "List the QRTR services before writing any modem or sensor code",
-    "general": "qrtr-lookup shows which QMI services each remoteproc announces (node and service ids). It proves the firmware is up and tells you what a client can talk to before any daemon is involved.",
-    "instance": "Pro1-X modem services: DMS 2, NAS 3, WMS 5, WDS 1, UIM 11, WDA 26, VOICE 9, DPM 47. The ADSP (node 5) announces service 400 'Snapdragon Sensor Core' even before the sensor daemon runs.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/notes/research/research-modem.md, port/notes/sensors-design.md, port/patches/ofono/README.md"
-   },
-   {
-    "title": "Talk to the modem with qmicli over QRTR, without any modem manager",
-    "general": "qmicli -d qrtr://0 speaks QMI over QRTR directly (libqmi built with QRTR support plus libqrtr-glib). Use it to verify the modem, the SIM and each data-path step independently of oFono or ModemManager, with the modem manager stopped. If the target distro lacks libqmi-utils, borrow the reference OS's binary for the first checks.",
-    "instance": "Pro1-X SailfishOS 2026-10-23: all QMI services (DMS, NAS, WDS, UIM, voice, ...) visible over QRTR; libqmi-utils was not in Jolla's aarch64 repos, so NixOS's qmicli was used first by bind-mounting its /nix; later libqmi 1.34 (qmi_qrtr_supported=1), libqrtr-glib and libqmi-utils from OBS nemo:devel:hw:native-common.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 13:27-13:56; Pro1-X port repo port/notes/external-packages.md, port/notes/sensors-design.md"
-   },
-   {
-    "title": "QRTR QMI clients die with their socket; modem-global state persists",
-    "general": "With QRTR a QMI client id belongs to the socket that allocated it, so separate qmicli calls cannot be chained into one session the way --client-no-release-cid allows on USB QMUX modems (no bind in one call and start-network in the next). State the modem keeps globally, such as an open DPM port and the WDA data format, does persist across clients and across modem-manager restarts until the modem itself restarts.",
-    "instance": "Pro1-X SM6115, libqmi/qmicli 1.34, 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "manual qmicli experiments 2026-10-26"
-   },
-   {
-    "title": "ModemManager probes a QRTR modem only once",
-    "general": "With ModemManager on a QRTR SoC modem, a restart or rescan after a failed first probe may not rediscover the modem. Reboot instead, or drive the modem with qmicli while ModemManager is stopped.",
-    "instance": "Pro1-X NixOS 2026-10-23: after a ModemManager restart (the modem had been sim-missing) mmcli -L listed nothing even after mmcli -S; a reboot brought it back.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 15:01-15:04"
-   }
-  ],
-  "modem_data": [
-   {
-    "title": "Activate the UIM provisioning session every boot",
-    "general": "Some Qualcomm modem firmwares do not keep the UIM primary GW provisioning session: the SIM shows present but stays 'detected', PIN 'not-initialized', and nothing registers (ModemManager reports state failed, reason sim-missing). Activate it before the modem manager starts, every boot, idempotently: qmicli --uim-change-provisioning-session with session-type=primary-gw-provisioning, activate=yes, slot=1 and the USIM AID read from --uim-get-card-status. postmarketOS ships msm-modem-uim-selection for this; no oFono version sends UIM 0x38 itself (a small upstreamable addition to qmimodem sim.c).",
-    "instance": "Pro1-X, needed on both NixOS (ModemManager 1.24.2) and SailfishOS (oFono): after activation the modem registered on LTE. On SailfishOS qx1050-modem-prep.sh waits for UIM service 11 on QRTR, then for 'Card state: present', then activates; provisioning did not persist across reboots.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "SailfishOS/mainline_porting.json modem_ofono.uim_provisioning; port log 2026-10-23 16:02-16:03, 2026-10-24, 2026-10-27; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-modem-prep.sh, port/notes/research/research-modem.md"
-   },
-   {
-    "title": "IPA modems need DPM OPEN_PORT before any WDS bind",
-    "general": "Where the modem data path runs through the IPA (rmnet_ipa0 plus rmnet_dataN mux links), the modem must first be told which IPA hardware endpoints form the data port: QMI DPM (service 47) OPEN_PORT 0x0020 with TLV 0x11 hardware data ports {u8 count, u32 endpoint type embedded (4), u32 interface 1, u32 rx endpoint, u32 tx endpoint}. The endpoint numbers come from the ipa driver in sysfs, /sys/class/net/rmnet_ipa0/device/modem/{tx,rx}_endpoint_id, crossed over: the port's rx endpoint is the modem's tx_endpoint_id and vice versa. Without it every WDS BIND_MUX_DATA_PORT variant returns InvalidArgument or Internal and WDA GET_DATA_FORMAT fails. ModemManager does this (src/mm-port-qmi.c dpm_open_port); upstream oFono does not (no DPM code in 2.12, none found in 2.19 either).",
-    "instance": "Pro1-X SM6115, MPSS.HA.1.1, Linux 7.3: endpoint ids tx 1, rx 9. qmicli --dpm-open-port=hw-data-ep-type=embedded,hw-data-ep-iface-number=1,hw-data-rx-id=..,hw-data-tx-id=.. made the bind succeed by hand; then implemented as oFono patch 0020-qrtrqmi-ipa-data-path (2026-10-26/27).",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/patches/ofono/README.md; ModemManager 1.24.2 debug log on NixOS (identical Open Port, Bind and Start Network TLVs)"
-   },
-   {
-    "title": "Request QMAPv4 when the IPA offloads MAPv4 checksums; the first format set sticks",
-    "general": "WDA SET_DATA_FORMAT on an IPA modem: TLV 0x11 link layer raw-ip (2), 0x12/0x13 UL/DL aggregation protocol QMAPv4 (0x08) when /sys/class/net/<ipa>/device/feature/rx_offload says MAPv4 (plain QMAP otherwise), DL max datagrams 32 and DL datagram max size 32768, and 0x17 endpoint info {embedded, 1}. With plain QMAP (5) the context activates, gets an IP and a route and uplink counters climb, but almost no downlink arrives. The modem keeps the first format set until it restarts and silently ignores later changes and anything it does not support, so a wrong first set poisons every later experiment: test on a freshly booted modem and read the format back with WDA GET_DATA_FORMAT. ModemManager tries QMAPv5, then QMAPv4, then QMAP.",
-    "instance": "Pro1-X SM6115, MPSS.HA.1.1: with plain QMAP 1418 tx vs 55 rx packets on rmnet_ipa0 and get-data-format kept reporting QMAP with 1 datagram / 63 bytes; ModemManager's log showed qmapv5 ignored and qmapv4 accepted (the DL limits stayed 1/63 while data worked). oFono 2.12.0+git4 with patch 0020, 2026-10-27: context active, qmapv4/qmapv4, ping 3/3 ~40 ms, HTTPS 200 over rmnet_data2 on a clean boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "qmicli --wda-get/set-data-format experiments 2026-10-27; ModemManager debug log diff; Pro1-X port repo port/patches/ofono/README.md"
-   },
-   {
-    "title": "Bind the data mux without the client-type TLV on embedded endpoints",
-    "general": "WDS BIND_MUX_DATA_PORT: send only endpoint info (TLV 0x10) and mux id (0x11). Some firmwares answer the client-type TLV 0x13 (tethered) with InvalidArgument on IPA (embedded) endpoints; ModemManager omits it, upstream oFono always sends it.",
-    "instance": "Pro1-X MPSS.HA.1.1, 2026-10-27.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "ModemManager debug log on NixOS; Pro1-X port repo port/patches/ofono/README.md"
-   },
-   {
-    "title": "Create rmnet mux links with MAPv4 checksum flags, using qmicli when iproute2 cannot",
-    "general": "When the ipa driver offloads MAPv4 checksums (sysfs feature/{rx,tx}_offload), the rmnet_dataN links must carry ingress and egress MAPv4 checksum flags (IFLA_RMNET_FLAGS), as ModemManager sets them; libqmi adds ingress deaggregation itself. Older iproute2 knows only the mux id for rmnet; qmicli >= 1.34 can create the links: qmicli -d qrtr://0 --link-add='iface=rmnet_ipa0,prefix=rmnet_data,mux-id=N,flags=ingress-map-cksumv4|egress-map-cksumv4'. Flags cannot be changed on an existing link that way; delete and recreate. The flags alone do not fix downlink; QMAPv4 is also required.",
-    "instance": "SailfishOS iproute2 6.9, libqmi 1.34. Pro1-X qx1050-modem-prep.sh waits up to 120 s for rmnet_ipa0 and creates rmnet_data0..2 (mux 1..3) this way since 2026-10-27.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-modem-prep.sh, port/patches/ofono/README.md"
-   },
-   {
-    "title": "The IPA netdev needs an IPA DT node, and oFono needs the mux links before it starts",
-    "general": "rmnet_ipa0 only exists when the board has an IPA DT node. Upstream oFono's udevng builds a qrtrsoc modem only from rmnet netdevs: one rmnet_ipa* and at least three rmnet_dataN (mux_id = N+1), bus embedded, and the QRTR services DMS, UIM, WDS and NAS. So a prep oneshot ordered after rmtfs and before the modem manager must provision the SIM and create the links on every boot.",
-    "instance": "Pro1-X: sm6115.dtsi had no IPA node upstream at 7.1; qcom,qcm2290-ipa at 0x5840000 is added by the board series (pro1x-ipa patch). qx1050-modem-prep.service with an ofono.service.d drop-in (After/Wants), 2026-10-24; oFono then registered on LTE at boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "SailfishOS/mainline_porting.json modem_ofono.udevng_needs; ofono plugins/udevng.c; Pro1-X port repo port/notes/research/research-modem.md, port/kernel/HANDOVER.md, port commit 'Modem: UIM provisioning + rmnet links before ofono 2.x (qrtrqmi)'"
-   },
-   {
-    "title": "Adding the IPA data path to oFono's qrtrqmi plugin",
-    "general": "To make upstream oFono's qmimodem data path work on IPA modems, add the DPM open-port step and the WDA data-format request before the first context activation, and bind without client-type. Keep the DPM and WDA service handles in the modem data until deinit: in drivers/qmimodem/qmi.c, qmi_service_free() cancels outstanding requests, so a service freed right after qmi_service_send() never gets its callback. The bind failure is not logged with its QMI error code at default level (OFONO_QMI_DEBUG helps), and OFONO_QMI_IO_DEBUG=1 set with systemctl set-environment produced an I/O log without the WDS bind traffic on QRTR; reproducing each step with qmicli outside oFono was what localised the failure.",
-    "instance": "oFono 2.12 (sailfishos-native 4c79652), patch 0020-qrtrqmi-ipa-data-path touching plugins/qrtrqmi.c and drivers/qmimodem/gprs-context.c, 2026-10-26/27; registration and SIM had worked since 2026-10-24, data failed at 'Failed to bind MUX' until then. APN duplicates were also seen early on.",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "Pro1-X port repo port/patches/ofono/README.md; port log 2026-10-24 02:22, 2026-10-26 (grep WDS_ in the oFono QMI I/O log returned nothing)"
-   },
-   {
-    "title": "Do not use SIM slot switching to fix a SIM the modem sees but does not open",
-    "general": "If the modem sees the card but does not open it, check the provisioning sessions first. Switching slots on a dual-SIM Qualcomm modem had no effect and may reset the modem.",
-    "instance": "Pro1-X NixOS 2026-10-23: mmcli --set-primary-sim-slot=2 was accepted with no effect, a qmicli slot switch returned NoEffect; after switching back to slot 1 the phone dropped off USB and Wi-Fi for minutes (possibly a crash reboot).",
-    "confidence": "inferred",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 15:37-15:54"
-   }
-  ],
-  "modem_voice": [
-   {
-    "title": "Call signalling and SMS need no extra QMI work once the modem is registered and exposed",
-    "general": "With upstream oFono's qrtrqmi plugin, voice call signalling (both directions) and SMS receive worked as soon as the modem was registered and visible to the OS's telephony UI; no voice-specific QMI work was needed. Call audio is a separate DSP path (q6voice) and is where the remaining voice work lies (audio.json).",
-    "instance": "Pro1-X, Linux 7.3.0-qx1050, SailfishOS 5.1.0.11/5.2.0.22, oFono 2.12.0+git1 with the slot driver patch 0019, 2026-10-26: calls connect both ways and SMS receive works. SMS send was not recorded as tested. Call audio not working as of 2026-10-27.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "moWerk call test 2026-10-26; Pro1-X port repo port/patches/ofono/README.md, port/packages/qx1050-voicecall/README.md"
-   }
-  ]
- }
+  "modem": {
+    "note": "The modem on a mainline Qualcomm SoC: QRTR and QMI services, SIM provisioning, the IPA data path (DPM, WDA data format, rmnet mux links) and voice. Instance: F(x)tec Pro1-X (SM6115, modem firmware MPSS.HA.1.1 from 2021) under upstream oFono 2.12 (qrtrqmi plugin) on SailfishOS, with ModemManager 1.24.2 on NixOS as the reference stack. State as of 2026-10-27: registration on LTE, SIM, incoming and outgoing calls (signalling) and SMS receive work; mobile data works with oFono patch 0020 (DPM open port, QMAPv4, bind without client-type) on SailfishOS 5.2.0.22; call audio does not work yet (see audio.json). The SailfishOS side (slot manager, Settings, connman) is in userspace_sailfishos.json.",
+    "qrtr_qmi": [
+      {
+        "title": "Public documentation for the IPA data chain is scattered",
+        "general": "The full chain (IPA sysfs endpoint ids -> DPM open port; feature/{rx,tx}_offload -> WDA raw-ip with qmap/qmapv4/qmapv5 on endpoint embedded,1; rmnet links with the matching v4 or v5 checksum flags, never mixed) is written down nowhere in one place; it was reconstructed from the kernel IPA sysfs ABI, the qmicli man page and the libqmi changelog (DPM needs libqmi >= 1.30, QMAPv5 checksum flags >= 1.32). rmnet_ipa0 itself only offloads scatter-gather; checksum offload lives in the rmnet layer. The port's own measurement (QMAPv4 accepted, plain QMAP dead downlink) is in the entries above.",
+        "instance": "Web survey 2026-10-27; libqmi and ModemManager sites block AI crawlers, so the chain was cross-checked against ModemManager's debug log on the device instead.",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "kernel Documentation/ABI (ipa), qmicli(1), libqmi NEWS (ChromiumOS mirror)"
+      },
+      {
+        "title": "List the QRTR services before writing any modem or sensor code",
+        "general": "qrtr-lookup shows which QMI services each remoteproc announces (node and service ids). It proves the firmware is up and tells you what a client can talk to before any daemon is involved.",
+        "instance": "Pro1-X modem services: DMS 2, NAS 3, WMS 5, WDS 1, UIM 11, WDA 26, VOICE 9, DPM 47. The ADSP (node 5) announces service 400 'Snapdragon Sensor Core' even before the sensor daemon runs.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/notes/research/research-modem.md, port/notes/sensors-design.md, port/patches/ofono/README.md"
+      },
+      {
+        "title": "Talk to the modem with qmicli over QRTR, without any modem manager",
+        "general": "qmicli -d qrtr://0 speaks QMI over QRTR directly (libqmi built with QRTR support plus libqrtr-glib). Use it to verify the modem, the SIM and each data-path step independently of oFono or ModemManager, with the modem manager stopped. If the target distro lacks libqmi-utils, borrow the reference OS's binary for the first checks.",
+        "instance": "Pro1-X SailfishOS 2026-10-23: all QMI services (DMS, NAS, WDS, UIM, voice, ...) visible over QRTR; libqmi-utils was not in Jolla's aarch64 repos, so NixOS's qmicli was used first by bind-mounting its /nix; later libqmi 1.34 (qmi_qrtr_supported=1), libqrtr-glib and libqmi-utils from OBS nemo:devel:hw:native-common.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 13:27-13:56; Pro1-X port repo port/notes/external-packages.md, port/notes/sensors-design.md"
+      },
+      {
+        "title": "QRTR QMI clients die with their socket; modem-global state persists",
+        "general": "With QRTR a QMI client id belongs to the socket that allocated it, so separate qmicli calls cannot be chained into one session the way --client-no-release-cid allows on USB QMUX modems (no bind in one call and start-network in the next). State the modem keeps globally, such as an open DPM port and the WDA data format, does persist across clients and across modem-manager restarts until the modem itself restarts.",
+        "instance": "Pro1-X SM6115, libqmi/qmicli 1.34, 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "manual qmicli experiments 2026-10-26"
+      },
+      {
+        "title": "ModemManager probes a QRTR modem only once",
+        "general": "With ModemManager on a QRTR SoC modem, a restart or rescan after a failed first probe may not rediscover the modem. Reboot instead, or drive the modem with qmicli while ModemManager is stopped.",
+        "instance": "Pro1-X NixOS 2026-10-23: after a ModemManager restart (the modem had been sim-missing) mmcli -L listed nothing even after mmcli -S; a reboot brought it back.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 15:01-15:04"
+      },
+      {
+        "title": "Intermittent modem watchdog crash at boot: measure before guessing",
+        "general": "A Qualcomm modem that reports 'DOG detects stalled initialization' 40 s after start and then recovers delays everything that rides on it (SIM, data, and on SM6115 the Wi-Fi interface). Useful measurements: rmtfs -v (does the modem request its EFS before the crash? stdout is buffered, read the order not the timestamps), per-boot timelines of rmtfs start, modem power-up and IPA events, and A/B series of several boots each (it is intermittent; check after start + 40 s, not earlier).",
+        "instance": "Pro1-X SailfishOS 5.2, kernel 7.3: about every second boot; the modem makes no rmtfs request before the stall; not the rmtfs order, the in-kernel PD mapper, IPA, an early start (delay to 30 s: 4 of 4 crashed) or the SIM polling alone (1 of 3 without it). NixOS 7.1 (modem at ~51 s): no crash in 2 checked boots. Unsolved.",
+        "confidence": "inferred",
+        "date": "2026-10-28",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline (notes/modem-dog-crash.md, notes/gpu-perf.md, kernel patches 0021-0022)"
+      },
+      {
+        "title": "Linux 7.3 QRTR HELLO gate makes the modem stall at boot (DOG 'stalled initialization')",
+        "general": "7.3 added a gate in qrtr_node_enqueue(): until the AP's own HELLO to a node went out (hello_sent), every other packet returns -EAGAIN; a HELLO that got -EAGAIN is retried 100 ms later (\"net: qrtr: Send HELLO message on endpoint register\", Chris Lew, merged into net as 544d85de4dc2 on 2026-09-02). When the modem's HELLO reaches the kernel name service first, announce_servers() fails on -EAGAIN (only -ENODEV is skipped), aborts, and nothing repeats it: the modem never learns of the AP's services (rmtfs), stalls before EFS and its watchdog fires 40 s later. Signature: the kernel line 'failed to announce new service' (plus 'failed while handling packet from 0:-2') within milliseconds of 'remote processor modem is now up'. Idle timing (PSCI cpuidle) moves the race; cpuidle.off=1 hides it. Fix used downstream: keep the 7.2 handshake (drop the gate, the name service answers every remote HELLO).",
+        "instance": "Pro1-X (SM6115), SailfishOS, kernel 7.3: in 25 of 25 journalled boots (2026-10-29/30) every modem start with that line crashed 40.03 s later and no start without it did; 12 of 25 boots had at least one, up to three in a row. Lenovo TB-J606L (SM6115, 7.3) saw the same and fixed it with patch 0020-net-qrtr-keep-the-hello-handshake-of-7.2 (github.com/haltia-de/device-lenovo-tb-j606l issue 31, commit 3768c60); not fixed upstream as of 2026-10-28. Pro1-X: the same patch as port kernel patch 0029; 8 of 8 boots on 2026-10-30 had neither the line nor a DOG crash (12 of 25 crashed before). Crashes hours into a session were seen on the old kernel too; a day-long run is still to confirm they shared the cause.",
+        "confidence": "confirmed: correlation on the device and the fix holds over 8 boots; the -EAGAIN path read from the source, errno not traced",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline notes/modem-dog-crash.md, notes/gnss.md, scripts/qmi-loc-probe.py (2026-10-30); ratatoskr.run/lkml/2026/08/17469420/t"
+      },
+      {
+        "title": "QMI LOC over QRTR needs one process for start and follow",
+        "general": "Over QRTR a QMI client is the process's own socket, so qmicli --client-no-release-cid does not carry a LOC client to the next call, and qmicli accepts one LOC action per call: a session from --loc-start dies with that process, and --loc-follow-nmea in another call receives nothing. A small client that sends REG_EVENTS (0x21), START (0x22, TLV 0x01 session id, 0x10 recurrence, 0x13 min interval; 0x14 is the application id struct and gives error 19 if misused) and STOP (0x23) from one socket works. Python's socket module may lack AF_QIPCRTR addresses ('bad family'); libc sendto through ctypes with struct sockaddr_qrtr {u16 family=42; u32 node; u32 port} works.",
+        "instance": "Pro1-X modem (MPSS.HA.1.1): LOC service 16 v2 at node 0 port 68; NMEA types were none until --loc-set-nmea-types=\"gga|gsa|gsv|rmc|vtg\"; then 1 Hz NMEA (0x26), position reports (0x24), SV info (0x25); indoors no satellites in 3 min.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline notes/modem-dog-crash.md, notes/gnss.md, scripts/qmi-loc-probe.py (2026-10-30)"
+      },
+      {
+        "title": "No MCFG served to the modem: calls work, GNSS hears no satellites",
+        "general": "At every start a Qualcomm modem requests /readonly/firmware/image/modem_pr/mcfg/configs/mcfg_hw/mbn_hw.dig and mcfg_sw/mbn_sw.dig over QRTR TFTP. tqftpserv maps /readonly/firmware/image/ to the directory of the remoteproc's firmware file; if modem_pr is not there it logs 'unable to open ..., reject' and the modem runs on built-in defaults. Voice and data still work, so nothing looks broken, but the GNSS engine accepts LOC sessions, reports cell-based positions only and tracks no satellite. Android mounts the modem partition (vfat) at /vendor/firmware_mnt; on mainline mount it read-only and bind image/modem_pr next to modem.mbn before tqftpserv starts. The modem reads the files only when it boots: needs a modem restart (a reboot where stopping the remoteproc is unsafe). Check: journalctl -u tqftpserv shows no reject lines.",
+        "instance": "Pro1-X (SM6115), SailfishOS, kernel 7.3, 2026-10-30: 50 min under open sky with 0 satellites while the hybris Pro1-X at the same spot got a fix; after serving modem_pr (11 MB, from modem_a) and a reboot the first satellite came after about 60 s (one at a time, 18-30 dB-Hz, no fix in 12 min yet). The downstream device tree has no GNSS/LNA node at all, so nothing AP-side was missing.",
+        "confidence": "confirmed: 0 satellites before, satellites tracked after, same place and sky; fix not yet reached",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline commit 47ce05e (qx1050-modem-pr.service, notes/gnss.md)"
+      },
+      {
+        "title": "Read-only rmtfs makes every GNSS start a cold start",
+        "general": "rmtfs -r keeps the modem's EFS writes in memory only. Everything the modem learns (GNSS almanac, ephemeris, last position, clock model) is lost at each boot, so every first GPS session is a true cold start, which on a weak antenna means minutes to hours. Serve the EFS from files seeded once from modemst1/2, fsg and fsc (rmtfs -o <dir> without -P -r): the modem writes there, the partitions stay untouched, deleting the files returns to the factory EFS. The files hold the modem identity: root only.",
+        "instance": "Pro1-X SM6115 mainline: hybris port at the same spot (persistent EFS) fixes in 10-20 s from stored data (GPSInfo: 5 of 35 satellites within seconds); mainline after the MCFG fix tracked 1-3 satellites at a time (18-34 dB-Hz) and had no fix in 50+ min. The modem wrote modem_fs1/2 during the first boot with file-backed rmtfs.",
+        "confidence": "confirmed (persistence works; warm-start TTFF on mainline not yet measured)",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline commit 87b1d56, notes/gnss.md"
+      },
+      {
+        "title": "QMI LOC NMEA types reset on every modem start",
+        "general": "The NMEA type mask (SET NMEA TYPES, 0x3E) does not survive a modem restart: after a reboot it reads 'none' again and a started session sends no NMEA at all. A GNSS daemon must set it before every START.",
+        "instance": "Pro1-X, MPSS.HA.1.1-00140: set with qmicli in the morning, 'none' after the next reboots.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline notes/gnss.md"
+      },
+      {
+        "title": "QMI LOC on MPSS.HA.1.1: which assistance messages the modem takes",
+        "general": "Event registration bits (libqmi QmiLocEventRegistrationFlag): position 0, SV info 1, NMEA 2, NI 3, inject time request 4, predicted orbits request 5, inject position request 6, engine state 7, fix session state 8, Wi-Fi request 9. INJECT PREDICTED ORBITS DATA (0x35) answers QMI error 94 (not supported); INJECT XTRA DATA (0xA7) accepts every part but the last part's indication reports status 1 and GET PREDICTED ORBITS DATA VALIDITY (0x37) then says nothing is valid, with SET XTRA VERSION CHECK (0x85) off or XTRA3. INJECT UTC TIME (0x38) sent unrequested right after start: status 1; the modem never sent an inject time request (it has network time). DELETE ASSIST DATA (0x44) and DELETE GNSS SERVICE DATA (0xA6, delete-all TLV 0x01) both returned QMI error 0x73 on the hybris modem while its HAL ran. START with horizontal accuracy HIGH (TLV 0x11 = 3) and intermediate reports (0x12) as the Android HAL does. The Android HAL sends SET ENGINE LOCK and SET OPERATION MODE before START. GNSS SV info TLV 0x10 is a u8-prefixed list of 28-byte elements (valid mask, system, sv id, health, status, nav, elevation, azimuth, SNR); systems seen: GPS 1, GLONASS 5.",
+        "instance": "Pro1-X modem MPSS.HA.1.1-00140-KD_ALL_PACK-1 (same image on hybris and mainline). XTRA file xtra3grcej.bin from the servers the modem names (GET PREDICTED ORBITS DATA SOURCE 0x36).",
+        "confidence": "confirmed for the responses; why XTRA is rejected is open",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline scripts/qmi-loc-assist.py, scripts/qmi-loc-coldstart.py, notes/gnss.md"
+      }
+    ],
+    "modem_data": [
+      {
+        "title": "Activate the UIM provisioning session every boot",
+        "general": "Some Qualcomm modem firmwares do not keep the UIM primary GW provisioning session: the SIM shows present but stays 'detected', PIN 'not-initialized', and nothing registers (ModemManager reports state failed, reason sim-missing). Activate it before the modem manager starts, every boot, idempotently: qmicli --uim-change-provisioning-session with session-type=primary-gw-provisioning, activate=yes, slot=1 and the USIM AID read from --uim-get-card-status. postmarketOS ships msm-modem-uim-selection for this; no oFono version sends UIM 0x38 itself (a small upstreamable addition to qmimodem sim.c).",
+        "instance": "Pro1-X, needed on both NixOS (ModemManager 1.24.2) and SailfishOS (oFono): after activation the modem registered on LTE. On SailfishOS qx1050-modem-prep.sh waits for UIM service 11 on QRTR, then for 'Card state: present', then activates; provisioning did not persist across reboots.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "SailfishOS/mainline_porting.json modem_ofono.uim_provisioning; port log 2026-10-23 16:02-16:03, 2026-10-24, 2026-10-27; Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-modem-prep.sh, port/notes/research/research-modem.md"
+      },
+      {
+        "title": "IPA modems need DPM OPEN_PORT before any WDS bind",
+        "general": "Where the modem data path runs through the IPA (rmnet_ipa0 plus rmnet_dataN mux links), the modem must first be told which IPA hardware endpoints form the data port: QMI DPM (service 47) OPEN_PORT 0x0020 with TLV 0x11 hardware data ports {u8 count, u32 endpoint type embedded (4), u32 interface 1, u32 rx endpoint, u32 tx endpoint}. The endpoint numbers come from the ipa driver in sysfs, /sys/class/net/rmnet_ipa0/device/modem/{tx,rx}_endpoint_id, crossed over: the port's rx endpoint is the modem's tx_endpoint_id and vice versa. Without it every WDS BIND_MUX_DATA_PORT variant returns InvalidArgument or Internal and WDA GET_DATA_FORMAT fails. ModemManager does this (src/mm-port-qmi.c dpm_open_port); upstream oFono does not (no DPM code in 2.12, none found in 2.19 either).",
+        "instance": "Pro1-X SM6115, MPSS.HA.1.1, Linux 7.3: endpoint ids tx 1, rx 9. qmicli --dpm-open-port=hw-data-ep-type=embedded,hw-data-ep-iface-number=1,hw-data-rx-id=..,hw-data-tx-id=.. made the bind succeed by hand; then implemented as oFono patch 0020-qrtrqmi-ipa-data-path (2026-10-26/27).",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/patches/ofono/README.md; ModemManager 1.24.2 debug log on NixOS (identical Open Port, Bind and Start Network TLVs)"
+      },
+      {
+        "title": "Request QMAPv4 when the IPA offloads MAPv4 checksums; the first format set sticks",
+        "general": "WDA SET_DATA_FORMAT on an IPA modem: TLV 0x11 link layer raw-ip (2), 0x12/0x13 UL/DL aggregation protocol QMAPv4 (0x08) when /sys/class/net/<ipa>/device/feature/rx_offload says MAPv4 (plain QMAP otherwise), DL max datagrams 32 and DL datagram max size 32768, and 0x17 endpoint info {embedded, 1}. With plain QMAP (5) the context activates, gets an IP and a route and uplink counters climb, but almost no downlink arrives. The modem keeps the first format set until it restarts and silently ignores later changes and anything it does not support, so a wrong first set poisons every later experiment: test on a freshly booted modem and read the format back with WDA GET_DATA_FORMAT. ModemManager tries QMAPv5, then QMAPv4, then QMAP.",
+        "instance": "Pro1-X SM6115, MPSS.HA.1.1: with plain QMAP 1418 tx vs 55 rx packets on rmnet_ipa0 and get-data-format kept reporting QMAP with 1 datagram / 63 bytes; ModemManager's log showed qmapv5 ignored and qmapv4 accepted (the DL limits stayed 1/63 while data worked). oFono 2.12.0+git4 with patch 0020, 2026-10-27: context active, qmapv4/qmapv4, ping 3/3 ~40 ms, HTTPS 200 over rmnet_data2 on a clean boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "qmicli --wda-get/set-data-format experiments 2026-10-27; ModemManager debug log diff; Pro1-X port repo port/patches/ofono/README.md"
+      },
+      {
+        "title": "Bind the data mux without the client-type TLV on embedded endpoints",
+        "general": "WDS BIND_MUX_DATA_PORT: send only endpoint info (TLV 0x10) and mux id (0x11). Some firmwares answer the client-type TLV 0x13 (tethered) with InvalidArgument on IPA (embedded) endpoints; ModemManager omits it, upstream oFono always sends it.",
+        "instance": "Pro1-X MPSS.HA.1.1, 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "ModemManager debug log on NixOS; Pro1-X port repo port/patches/ofono/README.md"
+      },
+      {
+        "title": "Create rmnet mux links with MAPv4 checksum flags, using qmicli when iproute2 cannot",
+        "general": "When the ipa driver offloads MAPv4 checksums (sysfs feature/{rx,tx}_offload), the rmnet_dataN links must carry ingress and egress MAPv4 checksum flags (IFLA_RMNET_FLAGS), as ModemManager sets them; libqmi adds ingress deaggregation itself. Older iproute2 knows only the mux id for rmnet; qmicli >= 1.34 can create the links: qmicli -d qrtr://0 --link-add='iface=rmnet_ipa0,prefix=rmnet_data,mux-id=N,flags=ingress-map-cksumv4|egress-map-cksumv4'. Flags cannot be changed on an existing link that way; delete and recreate. The flags alone do not fix downlink; QMAPv4 is also required.",
+        "instance": "SailfishOS iproute2 6.9, libqmi 1.34. Pro1-X qx1050-modem-prep.sh waits up to 120 s for rmnet_ipa0 and creates rmnet_data0..2 (mux 1..3) this way since 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/droid-config-qx1050/sparse/usr/bin/droid/qx1050-modem-prep.sh, port/patches/ofono/README.md"
+      },
+      {
+        "title": "The IPA netdev needs an IPA DT node, and oFono needs the mux links before it starts",
+        "general": "rmnet_ipa0 only exists when the board has an IPA DT node. Upstream oFono's udevng builds a qrtrsoc modem only from rmnet netdevs: one rmnet_ipa* and at least three rmnet_dataN (mux_id = N+1), bus embedded, and the QRTR services DMS, UIM, WDS and NAS. So a prep oneshot ordered after rmtfs and before the modem manager must provision the SIM and create the links on every boot.",
+        "instance": "Pro1-X: sm6115.dtsi had no IPA node upstream at 7.1; qcom,qcm2290-ipa at 0x5840000 is added by the board series (pro1x-ipa patch). qx1050-modem-prep.service with an ofono.service.d drop-in (After/Wants), 2026-10-24; oFono then registered on LTE at boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "SailfishOS/mainline_porting.json modem_ofono.udevng_needs; ofono plugins/udevng.c; Pro1-X port repo port/notes/research/research-modem.md, port/kernel/HANDOVER.md, port commit 'Modem: UIM provisioning + rmnet links before ofono 2.x (qrtrqmi)'"
+      },
+      {
+        "title": "Adding the IPA data path to oFono's qrtrqmi plugin",
+        "general": "To make upstream oFono's qmimodem data path work on IPA modems, add the DPM open-port step and the WDA data-format request before the first context activation, and bind without client-type. Keep the DPM and WDA service handles in the modem data until deinit: in drivers/qmimodem/qmi.c, qmi_service_free() cancels outstanding requests, so a service freed right after qmi_service_send() never gets its callback. The bind failure is not logged with its QMI error code at default level (OFONO_QMI_DEBUG helps), and OFONO_QMI_IO_DEBUG=1 set with systemctl set-environment produced an I/O log without the WDS bind traffic on QRTR; reproducing each step with qmicli outside oFono was what localised the failure.",
+        "instance": "oFono 2.12 (sailfishos-native 4c79652), patch 0020-qrtrqmi-ipa-data-path touching plugins/qrtrqmi.c and drivers/qmimodem/gprs-context.c, 2026-10-26/27; registration and SIM had worked since 2026-10-24, data failed at 'Failed to bind MUX' until then. APN duplicates were also seen early on.",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "Pro1-X port repo port/patches/ofono/README.md; port log 2026-10-24 02:22, 2026-10-26 (grep WDS_ in the oFono QMI I/O log returned nothing)"
+      },
+      {
+        "title": "Do not use SIM slot switching to fix a SIM the modem sees but does not open",
+        "general": "If the modem sees the card but does not open it, check the provisioning sessions first. Switching slots on a dual-SIM Qualcomm modem had no effect and may reset the modem.",
+        "instance": "Pro1-X NixOS 2026-10-23: mmcli --set-primary-sim-slot=2 was accepted with no effect, a qmicli slot switch returned NoEffect; after switching back to slot 1 the phone dropped off USB and Wi-Fi for minutes (possibly a crash reboot).",
+        "confidence": "inferred",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 15:37-15:54"
+      }
+    ],
+    "modem_voice": [
+      {
+        "title": "Call signalling and SMS need no extra QMI work once the modem is registered and exposed",
+        "general": "With upstream oFono's qrtrqmi plugin, voice call signalling (both directions) and SMS receive worked as soon as the modem was registered and visible to the OS's telephony UI; no voice-specific QMI work was needed. Call audio is a separate DSP path (q6voice) and is where the remaining voice work lies (audio.json).",
+        "instance": "Pro1-X, Linux 7.3.0-qx1050, SailfishOS 5.1.0.11/5.2.0.22, oFono 2.12.0+git1 with the slot driver patch 0019, 2026-10-26: calls connect both ways and SMS receive works. SMS send was not recorded as tested. Call audio not working as of 2026-10-27.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "moWerk call test 2026-10-26; Pro1-X port repo port/patches/ofono/README.md, port/packages/qx1050-voicecall/README.md"
+      }
+    ]
+  }
 }

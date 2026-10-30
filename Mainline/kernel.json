@@ -1,183 +1,199 @@
 {
- "kernel": {
-  "note": "Building and configuring an own mainline kernel for a phone outside a distro build system: base and rebase, config fragments and their checks, build containers, device tree hygiene, first-boot checks and the driver bugs still open. Instance: F(x)tec Pro1-X (SM6115). The port started on the NixOS flake's Linux 7.1 (sm6115-mainline qx1050-7.1 plus 12 device patches) and moved on 2026-10-26 to an own tree, v7.3 plus 16 commits, LOCALVERSION -qx1050, built in a rootless podman Debian container. State as of 2026-10-27: 7.3.0-qx1050 probes every driver on first boot; open kernel items are the Bluetooth re-power failure, microSD detection, speaker pops, the panel backlight EINVAL, wcd937x warnings on the voice path, and an intermittent camera sensor probe timeout seen on 7.1.",
-  "base_and_rebase": [
-   {
-    "title": "An own kernel is a release tag plus the device series; check what a community branch really carries",
-    "general": "Before adopting a community 'device branch', check whether it carries anything beyond a release tag. If not, the port's kernel is mainline plus the distro's device patch files, and it can be rebased per release without extracting anything else. Owning the tree lets camera, sensors and other fixes land on the current base instead of being rebased later.",
-    "instance": "Pro1-X: the branch the NixOS flake used (sm6115-mainline/linux qx1050-7.1) is plain v7.1, its tip Linus's 'Linux 7.1' commit; all device support was in fxtec-pro1x-nixos patch files. moWerk decided on 2026-10-26 to leave NixOS behind and give the port its own clean mainline base. Rebased to v7.3 (released 2026-10-18) as 16 commits; also applied to the 7.4 merge-window master with DTS-only rejects plus three audio hunks.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/mainline_porting.json own_kernel_tree.why, own_kernel_tree.base_finding; Pro1-X port repo port/kernel/README.md"
-   },
-   {
-    "title": "Rebase board DTS hunks by stepwise 3-way merge; watch patch -N",
-    "general": "When upstream touched the board DTS between releases, apply each patch's DTS hunks to the old-version file in sequence and 3-way merge each step onto the new-version file (git merge-file). Watch patch -N: it skips a hunk it sees as reversed but applies the rest of the same patch, so with a node already upstream it can add a second copy at a new offset. Check every 'Reversed' patch for duplicates.",
-    "instance": "Pro1-X 7.1 to 7.3: of 12 device patches and 4 SailfishOS patches, 9+3 applied with offsets only; the pinctrl egpio patch and the Venus SoC node + gcc flag were upstream by 7.3. Every reject was in the board DTS, where upstream changed the touch irq-gpios flag and added a Type-C vbus-supply; one conflict, resolved to ours. patch -N re-added the Venus node twice; the commit was rebuilt by hand.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/mainline_porting.json own_kernel_tree.rebase_7_1_to_7_3, own_kernel_tree.pitfall_patch_N; Pro1-X port repo port/kernel/README.md"
-   },
-   {
-    "title": "Expect config renames and export-namespace changes between releases",
-    "general": "Re-verify config fragments and out-of-tree modules on every rebase: options disappear, change dependencies or are renamed, and exported symbols move into namespaces that out-of-tree code must import.",
-    "instance": "7.1 to 7.3: PROC_SYSCTL is gone as an option (proc_sysctl builds with SYSCTL); CRYPTO_DEV_QCE depends on BROKEN; the Qualcomm RNG is HW_RANDOM_QCOM; since 7.2 the IIO consumer API is in the IIO_CONSUMER namespace, so the out-of-tree pro1x-adc-battery failed modpost until MODULE_IMPORT_NS(\"IIO_CONSUMER\").",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/mainline_porting.json own_kernel_tree.config_renames_7_3, own_kernel_tree.pitfall_iio_namespace; Pro1-X port repo port/kernel/HANDOVER.md"
-   },
-   {
-    "title": "Fetch mainline cheaply for a rebase",
-    "general": "A blobless bare clone of torvalds/linux is slow; shallow-fetch only the tags needed (git fetch --depth 1 origin tag v7.3; the old base with --filter=blob:none), plus origin/master for the next merge window. Use one git worktree per base and compare files with git show <tag>:<path>. Applying the series to both the release and master shows what the next kernel will need.",
-    "instance": "Pro1-X 7.1 to 7.3 rebase and 7.4 merge-window test, 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-26 13:19-13:22"
-   }
-  ],
-  "config": [
-   {
-    "title": "Build from defconfig plus fragments, resolve on the patched tree, and fail on lost options",
-    "general": "Generate the config from arm64 defconfig plus a device fragment plus an OS fragment, run olddefconfig on the source tree with all device patches applied, then fail the build if any requested line did not survive. Kconfig silently demotes =y to =m or drops options whose dependencies are missing, and resolving against the unpatched tree drops every option the device patches introduce.",
-    "instance": "Pro1-X 2026-10-23: the first SailfishOS kernel config was resolved against plain 7.1 and lost the keyboard, haptics (aw86224), battery level, speaker amp (aw87339), q6voice and camera sensor drivers; the hardware keyboard was dead. Regenerated on the patched tree with a lost-option guard, all drivers came back. build-kernel.sh now writes config-check.txt and exits on any MISMATCH.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 16:05-17:14; Pro1-X port repo port/kernel/build-kernel.sh, port/kernel/sfos.fragment"
-   },
-   {
-    "title": "A distro config that Kconfig never resolved can hold impossible values",
-    "general": "Some distro build systems (Nix manualConfig) pass a config to the kernel build without letting Kconfig resolve it, so it can claim values Kconfig would refuse. A plain defconfig + fragment + olddefconfig build exposes them; check every fragment line afterwards.",
-    "instance": "Pro1-X NixOS 7.1 config claimed BT_RFCOMM=y with BT=m.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "SailfishOS/mainline_porting.json own_kernel_tree.pitfall_nix_config; Pro1-X port repo port/kernel/build-kernel.sh"
-   },
-   {
-    "title": "Build in everything needed to mount root and light the panel; leave firmware users as modules",
-    "general": "With an initramfs that loads no modules, storage (UFS and its PHY), clock controllers, interconnect, RPM/SMD, pinctrl, DRM and the panel, and their I2C/DMA dependencies must be =y. On Qualcomm SoCs, if the display/GPU clock controllers, the GENI I2C controller or GPI DMA are modules, mdss, adreno and the SMMU can hit the deferred-probe timeout (-110) before udev loads them: the panel never lights and touch probes about 47 s late. Remoteprocs, IPA, Wi-Fi, Bluetooth and audio can stay modules loaded after root mounts.",
-    "instance": "Pro1-X pro1x.fragment: UFS_QCOM, PHY_QCOM_QMP_UFS, SM_GCC_6115, PINCTRL_SM6115, INTERCONNECT_QCOM_SM6115, QCOM_SMD_RPM, DRM_MSM, DRM_PANEL_BOE_BF060Y8M_AJ0, SM_DISPCC_6115, SM_GPUCC_6115, I2C_QCOM_GENI, I2C_GPIO, QCOM_GPI_DMA, QRTR, QRTR_SMD, QRTR_TUN =y; Q6V5_PAS, QCOM_IPA, ATH10K =m.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/kernel/pro1x.fragment"
-   },
-   {
-    "title": "Drivers that load firmware or config blobs at probe must be modules",
-    "general": "A built-in driver that requests a firmware or config file at probe runs before the root filesystem is mounted; without the file in the initramfs, the request fails. Build such drivers as modules, or put the file into the initramfs.",
-    "instance": "Pro1-X: TOUCHSCREEN_GOODIX=m because goodix_9286_cfg.bin comes from the firmware loader. The Adreno a630_sqe.fw early-boot message is the same pattern (see firmware_remoteproc.json).",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/kernel/pro1x.fragment"
-   },
-   {
-    "title": "Use the in-kernel protection-domain mapper",
-    "general": "Enable QCOM_PD_MAPPER=y so the modem and ADSP remoteprocs and Wi-Fi find their protection domains without the userspace pd-mapper daemon; built in, it exists before the remoteprocs start.",
-    "instance": "Pro1-X pro1x.fragment, Linux 7.x.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/kernel/pro1x.fragment"
-   },
-   {
-    "title": "SailfishOS kernel config requirements on a modern mainline kernel",
-    "general": "SailfishOS userspace still needs: cgroup v1 memory and cpuset hierarchies (MEMCG_V1, CPUSETS_V1), quota netlink and QFMT_V2 (quota_nld), legacy iptables tables (NETFILTER_XTABLES_LEGACY, IP(6)_NF_IPTABLES_LEGACY with filter/mangle/raw/nat/reject/rpfilter) for the connman firewall and tethering, IPsec AH/ESP/IPCOMP and XFRM, PPP/PPPoE/L2TP for the VPN plugins, NET_L3_MASTER_DEV, Bluetooth RFCOMM/BNEP and NLS_UTF8. Run mer-kernel-check (mer_verify_kernel_config) on the config early: a phone distro's mainline config usually meets the core needs (namespaces, seccomp, cgroups, autofs, loop, firmware loader, binder) and misses only these. mer-kernel-check reports IP_NF_TARGET_REJECT, IP6_NF_TARGET_REJECT and IP_NF_NAT as errors when =m; decide per option whether on-demand module loading is acceptable.",
-    "instance": "Pro1-X NixOS 7.1 config: 29 errors; the SailfishOS fragment brought it to 12, all netfilter options wanted =y but given =m (iptables tables and IP(6)_NF_IPTABLES_LEGACY had to be modules for Kconfig dependencies; iptables loads them on demand). Without QUOTA_NETLINK_INTERFACE quota_nld fails.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "port log 2026-10-23 10:22, 12:54 (checker runs); Pro1-X port repo port/kernel/sfos.fragment, port/notes/mer-kernel-check-7.1.0.txt"
-   },
-   {
-    "title": "SailfishOS 5.x user session needs the cgroup v1 memory controller",
-    "general": "SailfishOS tmpfiles writes /sys/fs/cgroup/memory/noswapping. Without the cgroup v1 memory hierarchy systemd-tmpfiles-setup fails, /run/systemd/boot-status/bootstate is never written, user@<uid>.service (which has it as a mandatory EnvironmentFile) cannot start, and the boot ends without UI. Enable MEMCG_V1 and CPUSETS_V1, or mask /usr/lib/tmpfiles.d/sailfishos-cgroups.conf and accept the consequences.",
-    "instance": "Pro1-X kernel 7.1 without MEMCG_V1, 2026-10-23/24: lipstick never started; with MEMCG_V1 + CPUSETS_V1 the UI came up. A mask etc/tmpfiles.d/sailfishos-cgroups.conf is kept for such kernels. Open check: one bisect kernel (A2) without the cgroup v1 options reportedly still reached the UI, so the exact dependency deserves one more test.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "port log 2026-10-23 22:44 to 2026-10-24 00:45 (bisect kernels); Pro1-X port repo port/droid-config-qx1050/sparse/etc/tmpfiles.d/sailfishos-cgroups.conf, port/kernel/sfos.fragment"
-   }
-  ],
-  "build": [
-   {
-    "title": "Cross-build the kernel in a rootless container, independent of any distro",
-    "general": "A rootless podman Debian container with gcc-aarch64-linux-gnu plus host gcc and libc6-dev (fixdep and other build helpers are host tools) builds Image, DTB and a root-owned modules tarball, and decouples the kernel from the sibling distro. Run it under a user slice with CPU and memory caps on a shared host. Do not pipe the build through tee without capturing the real exit status.",
-    "instance": "Pro1-X build-kernel.sh, image qx1050-kernel-builder:trixie-2: defconfig + fragments, Image + dtb + modules_install with INSTALL_MOD_STRIP=1 and build/source symlinks removed, about 20 minutes at 12 threads on a Ryzen 5850U (a second build host, build.slice).",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "SailfishOS/mainline_porting.json own_kernel_tree.build_without_nix; Pro1-X port repo port/kernel/build-kernel.sh"
-   },
-   {
-    "title": "Name your own kernel and make install scripts version-agnostic, keeping the old modules",
-    "general": "Set CONFIG_LOCALVERSION (e.g. -<device>) so an own kernel is never mistaken for a distro build in uname -r and /lib/modules. Install scripts should read the version from the built modules tarball (lib/modules/<version>/), run depmod per version present, keep any same-version directory as <version>.prev and leave other versions untouched, so the old kernel still boots after a rollback.",
-    "instance": "Pro1-X: 7.3.0-qx1050; sfos-kernel-install.sh, sfos-kernel-install-from-nixos.sh, stage2-device.sh and the kernel fetch script had 7.1.0 hard-coded until 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/scripts/sfos-kernel-install.sh, port/scripts/sfos-kernel-install-from-nixos.sh; port commits 2026-10-26"
-   },
-   {
-    "title": "Cross-compile natively; anything built under emulation is many times slower",
-    "general": "Cross-compile kernel and bootloader on the host. Packages that miss a binary cache and must be built as aarch64 under qemu-user (binfmt) take many times longer; budget for it and avoid customising packages that would miss the cache. qemu-user-static with binfmt is needed for such builds (restarting systemd-binfmt registers it without reboot).",
-    "instance": "Pro1-X NixOS flake on rootless podman, 2026-10-22: kernel cross-build in minutes; phosh, phoc, chatty and libcamera with local changes compiled under qemu for about 1.5 h. The nix container needed /usr/bin/qemu-aarch64-static bind-mounted and extra-platforms = aarch64-linux.",
-    "confidence": "confirmed",
-    "date": "2026-10-22",
-    "source": "port log 2026-10-22 21:22-23:25 (build logs)"
-   },
-   {
-    "title": "Nix-based kernel builds on a remote host: seed the store, sync .git, find the modules output",
-    "general": "When running nix in a container with an external /nix volume, seed the volume from the image first (cp -a /nix/. into it); an empty volume hides the image's own nix binaries. A flake evaluates the git tree, so a new patch file that is untracked, or synced without .git, is silently ignored: sync .git (or commit), run the wrapper from its own directory, and grep the build log for 'applying patch <name>'. nix build a b --out-link X names the links X, X-1; modules are a second output (nix-store -q --outputs $(nix-store -q --deriver K)).",
-    "instance": "a second build host, 2026-10-23..25: the first build ended at once until the store was seeded; then a full 7.1 kernel took about 20 minutes (12 threads, build.slice CPUQuota 1200 %, MemoryMax 12G) against about 1 h on the older host; rsync --exclude .git built without sfos-imx582-1080p.patch. Superseded by the non-Nix container build on 2026-10-26.",
-    "confidence": "confirmed",
-    "date": "2026-10-25",
-    "source": "port log 2026-10-23 21:46-23:00, 2026-10-24, 2026-10-25 13:40-14:04"
-   }
-  ],
-  "device_tree": [
-   {
-    "title": "Never hand-write DT patch hunks; check the property in the built DTB",
-    "general": "Make DT changes in a tree and generate a real diff instead of hand-writing hunks. After every build, decompile the built DTB (dtc -I dtb -O dts) and confirm the property actually changed: a build that succeeds can still carry the old DT when a hunk was dropped.",
-    "instance": "Pro1-X 2026-10-24: the slide-switch hunk of sfos-dt.patch did not land in a kernel build although the build passed; found by dumping the hall-switch node from the built DTB; the patch was regenerated with diff and rebuilt.",
-    "confidence": "confirmed",
-    "date": "2026-10-24",
-    "source": "port log 2026-10-24 00:37-00:42 (dtc dump comparison)"
-   },
-   {
-    "title": "Keep hardware facts and OS workarounds in separate DT patches",
-    "general": "Split DT changes into real hardware corrections (upstreamable) and workarounds for one OS's userspace (keep out of upstream, and preferably fix in userspace). Mixing them makes the upstream split hard and hides which change fixed what.",
-    "instance": "Pro1-X sfos-dt.patch: the keyboard backlight LED GPIO (tlmm 103) being active-low is a real DT bug; inverting the hall slide switch (tlmm 96) for mce and mapping the Fn keys to KEY_RIGHTALT are SailfishOS-only (see display_input_power.json and userspace_sailfishos.json).",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "Pro1-X port repo port/kernel/HANDOVER.md, port/notes/upstream.md"
-   },
-   {
-    "title": "Validate DT against the bindings before calling a board done",
-    "general": "Bindings are YAML json-schema checked with make dt_binding_check; board DTS files are checked with make dtbs_check (and dt-check-style), and a new board must add no warnings. Every compatible used in a DTS, including the board's top-level compatible, must be documented in a binding first. Details of the submission rules are in upstreaming.json.",
-    "instance": "Not yet run on the Pro1-X series; the new camera, keyboard, haptics and amplifier drivers have no bindings yet (see upstreaming.json).",
-    "confidence": "reported",
-    "date": "2026-10-27",
-    "source": "https://docs.kernel.org/devicetree/bindings/submitting-patches.html; https://docs.kernel.org/process/maintainer-soc.html"
-   }
-  ],
-  "first_boot_and_known_bugs": [
-   {
-    "title": "Check every subsystem on the first boot of a new kernel",
-    "general": "After a rebase or a new base, check every subsystem on first boot: failed units, dmesg err/crit, the probe of each sensor and driver, sound server sinks, modem, Wi-Fi, Bluetooth, battery, input, LEDs, brightness. A written checklist turns this into minutes and catches regressions before they are blamed on userspace.",
-    "instance": "Pro1-X 7.1 (NixOS flake kernel, 2026-10-22/23): Mesa 26.2.3 msm GLES 3.2 in hardware, modem/adsp/cdsp remoteprocs running, Wi-Fi, brightness with a proper dark minimum, battery and charging readout, multitouch; RTC starts at 1970 until NTP. Pro1-X 7.3.0-qx1050 with SailfishOS 5.1.0.11 (2026-10-26, 3 h 44 min uptime): everything probed first time, including both camera sensors and the lens without a rebind, Venus encoder/decoder, the sound card with PulseAudio sink and source, modem with IPA interfaces, Wi-Fi, Bluetooth (pairing and A2DP music), battery charging, keyboard, touch, haptics, jack, power key; remaining log errors were policies-setup.service (usb-moded, not kernel), one 'Failed to write display brightness: -22' and an a630_sqe.fw message in early boot.",
-    "confidence": "confirmed",
-    "date": "2026-10-26",
-    "source": "port log 2026-10-22 21:43, 2026-10-26 20:40; moWerk test report 2026-10-26 21:17"
-   },
-   {
-    "title": "Keep kernel gaps in their own list",
-    "general": "Track kernel-side gaps separately from userspace gaps; they go to the kernel tree, not the distro config, and reference-OS behaviour tells which list an item belongs on (a defect present on the reference OS too is kernel or hardware level).",
-    "instance": "Pro1-X open kernel items as of 2026-10-27: microSD not detected (sdhci_msm has its card-detect GPIO but reports no card); Bluetooth dead after a power-down; speaker pops at boot and USB plug (also on NixOS; see audio.json); panel backlight write EINVAL (see display_input_power.json); wcd937x warnings on the voice path (see audio.json); intermittent camera sensor I2C timeout at boot on 7.1 (see camera.json).",
-    "confidence": "confirmed",
-    "date": "2026-10-27",
-    "source": "port log 2026-10-23 (ground truth, test round 19:46); Pro1-X port repo port/README.md"
-   },
-   {
-    "title": "WCN399x Bluetooth never answers again after a power-down",
-    "general": "On Qualcomm WCN399x Bluetooth over hci_uart_qca, the controller works when enabled from boot but after a power-down it never answers again (0xfc00 tx timeout), and unbinding the driver warns of an unbalanced regulator refcount. Treat it as a kernel regulator/power-sequencing bug; in userspace, avoid powering Bluetooth down until fixed.",
-    "instance": "Pro1-X (Bluetooth part WCN3950, driven by the wcn399x/hci_uart_qca code; firmware cmbtfw12 loads), Linux 7.1, 2026-10-23; the SailfishOS Bluetooth toggle blinked forever.",
-    "confidence": "confirmed",
-    "date": "2026-10-23",
-    "source": "SailfishOS/mainline_porting.json dual_boot_nixos.bluetooth_repower; dmesg 2026-10-23 21:01; Pro1-X port repo port/notes/upstream.md"
-   }
-  ]
- }
+  "kernel": {
+    "note": "Building and configuring an own mainline kernel for a phone outside a distro build system: base and rebase, config fragments and their checks, build containers, device tree hygiene, first-boot checks and the driver bugs still open. Instance: F(x)tec Pro1-X (SM6115). The port started on the NixOS flake's Linux 7.1 (sm6115-mainline qx1050-7.1 plus 12 device patches) and moved on 2026-10-26 to an own tree, v7.3 plus 16 commits, LOCALVERSION -qx1050, built in a rootless podman Debian container. State as of 2026-10-27: 7.3.0-qx1050 probes every driver on first boot; open kernel items are the Bluetooth re-power failure, microSD detection, speaker pops, the panel backlight EINVAL, wcd937x warnings on the voice path, and an intermittent camera sensor probe timeout seen on 7.1.",
+    "base_and_rebase": [
+      {
+        "title": "An own kernel is a release tag plus the device series; check what a community branch really carries",
+        "general": "Before adopting a community 'device branch', check whether it carries anything beyond a release tag. If not, the port's kernel is mainline plus the distro's device patch files, and it can be rebased per release without extracting anything else. Owning the tree lets camera, sensors and other fixes land on the current base instead of being rebased later.",
+        "instance": "Pro1-X: the branch the NixOS flake used (sm6115-mainline/linux qx1050-7.1) is plain v7.1, its tip Linus's 'Linux 7.1' commit; all device support was in fxtec-pro1x-nixos patch files. moWerk decided on 2026-10-26 to leave NixOS behind and give the port its own clean mainline base. Rebased to v7.3 (released 2026-10-18) as 16 commits; also applied to the 7.4 merge-window master with DTS-only rejects plus three audio hunks.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/mainline_porting.json own_kernel_tree.why, own_kernel_tree.base_finding; Pro1-X port repo port/kernel/README.md"
+      },
+      {
+        "title": "Rebase board DTS hunks by stepwise 3-way merge; watch patch -N",
+        "general": "When upstream touched the board DTS between releases, apply each patch's DTS hunks to the old-version file in sequence and 3-way merge each step onto the new-version file (git merge-file). Watch patch -N: it skips a hunk it sees as reversed but applies the rest of the same patch, so with a node already upstream it can add a second copy at a new offset. Check every 'Reversed' patch for duplicates.",
+        "instance": "Pro1-X 7.1 to 7.3: of 12 device patches and 4 SailfishOS patches, 9+3 applied with offsets only; the pinctrl egpio patch and the Venus SoC node + gcc flag were upstream by 7.3. Every reject was in the board DTS, where upstream changed the touch irq-gpios flag and added a Type-C vbus-supply; one conflict, resolved to ours. patch -N re-added the Venus node twice; the commit was rebuilt by hand.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/mainline_porting.json own_kernel_tree.rebase_7_1_to_7_3, own_kernel_tree.pitfall_patch_N; Pro1-X port repo port/kernel/README.md"
+      },
+      {
+        "title": "Expect config renames and export-namespace changes between releases",
+        "general": "Re-verify config fragments and out-of-tree modules on every rebase: options disappear, change dependencies or are renamed, and exported symbols move into namespaces that out-of-tree code must import.",
+        "instance": "7.1 to 7.3: PROC_SYSCTL is gone as an option (proc_sysctl builds with SYSCTL); CRYPTO_DEV_QCE depends on BROKEN; the Qualcomm RNG is HW_RANDOM_QCOM; since 7.2 the IIO consumer API is in the IIO_CONSUMER namespace, so the out-of-tree pro1x-adc-battery failed modpost until MODULE_IMPORT_NS(\"IIO_CONSUMER\").",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/mainline_porting.json own_kernel_tree.config_renames_7_3, own_kernel_tree.pitfall_iio_namespace; Pro1-X port repo port/kernel/HANDOVER.md"
+      },
+      {
+        "title": "Fetch mainline cheaply for a rebase",
+        "general": "A blobless bare clone of torvalds/linux is slow; shallow-fetch only the tags needed (git fetch --depth 1 origin tag v7.3; the old base with --filter=blob:none), plus origin/master for the next merge window. Use one git worktree per base and compare files with git show <tag>:<path>. Applying the series to both the release and master shows what the next kernel will need.",
+        "instance": "Pro1-X 7.1 to 7.3 rebase and 7.4 merge-window test, 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-26 13:19-13:22"
+      },
+      {
+        "title": "Slow small-block storage on mainline Qualcomm UFS: CPU deep idle between requests, PM QoS tied to clock scaling",
+        "general": "If a queue-depth-1 storage test (e.g. 16 KiB O_DIRECT reads) is far below the downstream kernel while large-block throughput is fine, check CPU idle exit latency (cpuidle stateN/latency) and whether the UFS PM QoS vote is active. Mainline ufshcd votes CPU latency 0 only on clock scale-up when clock scaling is supported; low-depth I/O can stay below the scale-up threshold, so CPUs enter deep idle between requests. Confirm by disabling the deep idle state for one run; fix by letting the vote follow clock gating (ufshcd_setup_clocks) instead. Large-block raw and buffered tests (dd 1M) do not show it.",
+        "instance": "Pro1-X SM6115, Linux 7.3: link HS-G3 x1, raw read 438 MB/s, buffered fsync write 155 / read 500 MB/s; Benchymark storage (16 KiB O_DIRECT) 72/48 MB/s write/read, 74/91 with cpu-sleep-0-0 (666 us) disabled, 76/86 with the patch (port kernel patch 0024, commit 24340a6). Also: zram via Jolla's zram package (FACTOR=2, lz4) needs only CONFIG_ZRAM=m.",
+        "confidence": "confirmed",
+        "date": "2026-10-29",
+        "source": "Pro1-X port repo port/kernel/patches-7.3/0024-*, README Storage row"
+      }
+    ],
+    "config": [
+      {
+        "title": "Build from defconfig plus fragments, resolve on the patched tree, and fail on lost options",
+        "general": "Generate the config from arm64 defconfig plus a device fragment plus an OS fragment, run olddefconfig on the source tree with all device patches applied, then fail the build if any requested line did not survive. Kconfig silently demotes =y to =m or drops options whose dependencies are missing, and resolving against the unpatched tree drops every option the device patches introduce.",
+        "instance": "Pro1-X 2026-10-23: the first SailfishOS kernel config was resolved against plain 7.1 and lost the keyboard, haptics (aw86224), battery level, speaker amp (aw87339), q6voice and camera sensor drivers; the hardware keyboard was dead. Regenerated on the patched tree with a lost-option guard, all drivers came back. build-kernel.sh now writes config-check.txt and exits on any MISMATCH.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 16:05-17:14; Pro1-X port repo port/kernel/build-kernel.sh, port/kernel/sfos.fragment"
+      },
+      {
+        "title": "A distro config that Kconfig never resolved can hold impossible values",
+        "general": "Some distro build systems (Nix manualConfig) pass a config to the kernel build without letting Kconfig resolve it, so it can claim values Kconfig would refuse. A plain defconfig + fragment + olddefconfig build exposes them; check every fragment line afterwards.",
+        "instance": "Pro1-X NixOS 7.1 config claimed BT_RFCOMM=y with BT=m.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json own_kernel_tree.pitfall_nix_config; Pro1-X port repo port/kernel/build-kernel.sh"
+      },
+      {
+        "title": "Build in everything needed to mount root and light the panel; leave firmware users as modules",
+        "general": "With an initramfs that loads no modules, storage (UFS and its PHY), clock controllers, interconnect, RPM/SMD, pinctrl, DRM and the panel, and their I2C/DMA dependencies must be =y. On Qualcomm SoCs, if the display/GPU clock controllers, the GENI I2C controller or GPI DMA are modules, mdss, adreno and the SMMU can hit the deferred-probe timeout (-110) before udev loads them: the panel never lights and touch probes about 47 s late. Remoteprocs, IPA, Wi-Fi, Bluetooth and audio can stay modules loaded after root mounts.",
+        "instance": "Pro1-X pro1x.fragment: UFS_QCOM, PHY_QCOM_QMP_UFS, SM_GCC_6115, PINCTRL_SM6115, INTERCONNECT_QCOM_SM6115, QCOM_SMD_RPM, DRM_MSM, DRM_PANEL_BOE_BF060Y8M_AJ0, SM_DISPCC_6115, SM_GPUCC_6115, I2C_QCOM_GENI, I2C_GPIO, QCOM_GPI_DMA, QRTR, QRTR_SMD, QRTR_TUN =y; Q6V5_PAS, QCOM_IPA, ATH10K =m.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/kernel/pro1x.fragment"
+      },
+      {
+        "title": "Drivers that load firmware or config blobs at probe must be modules",
+        "general": "A built-in driver that requests a firmware or config file at probe runs before the root filesystem is mounted; without the file in the initramfs, the request fails. Build such drivers as modules, or put the file into the initramfs.",
+        "instance": "Pro1-X: TOUCHSCREEN_GOODIX=m because goodix_9286_cfg.bin comes from the firmware loader. The Adreno a630_sqe.fw early-boot message is the same pattern (see firmware_remoteproc.json).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/kernel/pro1x.fragment"
+      },
+      {
+        "title": "Use the in-kernel protection-domain mapper",
+        "general": "Enable QCOM_PD_MAPPER=y so the modem and ADSP remoteprocs and Wi-Fi find their protection domains without the userspace pd-mapper daemon; built in, it exists before the remoteprocs start.",
+        "instance": "Pro1-X pro1x.fragment, Linux 7.x.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/kernel/pro1x.fragment"
+      },
+      {
+        "title": "SailfishOS kernel config requirements on a modern mainline kernel",
+        "general": "SailfishOS userspace still needs: cgroup v1 memory and cpuset hierarchies (MEMCG_V1, CPUSETS_V1), quota netlink and QFMT_V2 (quota_nld), legacy iptables tables (NETFILTER_XTABLES_LEGACY, IP(6)_NF_IPTABLES_LEGACY with filter/mangle/raw/nat/reject/rpfilter) for the connman firewall and tethering, IPsec AH/ESP/IPCOMP and XFRM, PPP/PPPoE/L2TP for the VPN plugins, NET_L3_MASTER_DEV, Bluetooth RFCOMM/BNEP and NLS_UTF8. Run mer-kernel-check (mer_verify_kernel_config) on the config early: a phone distro's mainline config usually meets the core needs (namespaces, seccomp, cgroups, autofs, loop, firmware loader, binder) and misses only these. mer-kernel-check reports IP_NF_TARGET_REJECT, IP6_NF_TARGET_REJECT and IP_NF_NAT as errors when =m; decide per option whether on-demand module loading is acceptable.",
+        "instance": "Pro1-X NixOS 7.1 config: 29 errors; the SailfishOS fragment brought it to 12, all netfilter options wanted =y but given =m (iptables tables and IP(6)_NF_IPTABLES_LEGACY had to be modules for Kconfig dependencies; iptables loads them on demand). Without QUOTA_NETLINK_INTERFACE quota_nld fails.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "port log 2026-10-23 10:22, 12:54 (checker runs); Pro1-X port repo port/kernel/sfos.fragment, port/notes/mer-kernel-check-7.1.0.txt"
+      },
+      {
+        "title": "SailfishOS 5.x user session needs the cgroup v1 memory controller",
+        "general": "SailfishOS tmpfiles writes /sys/fs/cgroup/memory/noswapping. Without the cgroup v1 memory hierarchy systemd-tmpfiles-setup fails, /run/systemd/boot-status/bootstate is never written, user@<uid>.service (which has it as a mandatory EnvironmentFile) cannot start, and the boot ends without UI. Enable MEMCG_V1 and CPUSETS_V1, or mask /usr/lib/tmpfiles.d/sailfishos-cgroups.conf and accept the consequences.",
+        "instance": "Pro1-X kernel 7.1 without MEMCG_V1, 2026-10-23/24: lipstick never started; with MEMCG_V1 + CPUSETS_V1 the UI came up. A mask etc/tmpfiles.d/sailfishos-cgroups.conf is kept for such kernels. Open check: one bisect kernel (A2) without the cgroup v1 options reportedly still reached the UI, so the exact dependency deserves one more test.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-23 22:44 to 2026-10-24 00:45 (bisect kernels); Pro1-X port repo port/droid-config-qx1050/sparse/etc/tmpfiles.d/sailfishos-cgroups.conf, port/kernel/sfos.fragment"
+      },
+      {
+        "title": "SailfishOS needs CONFIG_PM_AUTOSLEEP or the phone never suspends",
+        "general": "mce suspends the device by writing to /sys/power/autosleep. Without CONFIG_PM_AUTOSLEEP the file does not exist, mce shows 'Autosuspend policy: enabled' and nothing happens: the device never enters system sleep, the screen-off state is CPU idle only. Check /sys/kernel/debug/suspend_stats (success count). arm64 defconfig does not set it.",
+        "instance": "Pro1-X mainline SFOS: 0 suspends since boot with the screen off and no wakelock held; rtcwake -m mem (s2idle) by hand worked.",
+        "confidence": "confirmed",
+        "date": "2026-10-30",
+        "source": "github.com/moWerk/sailfishos-pro1x-mainline kernel/sfos.fragment"
+      }
+    ],
+    "build": [
+      {
+        "title": "Cross-build the kernel in a rootless container, independent of any distro",
+        "general": "A rootless podman Debian container with gcc-aarch64-linux-gnu plus host gcc and libc6-dev (fixdep and other build helpers are host tools) builds Image, DTB and a root-owned modules tarball, and decouples the kernel from the sibling distro. Run it under a user slice with CPU and memory caps on a shared host. Do not pipe the build through tee without capturing the real exit status.",
+        "instance": "Pro1-X build-kernel.sh, image qx1050-kernel-builder:trixie-2: defconfig + fragments, Image + dtb + modules_install with INSTALL_MOD_STRIP=1 and build/source symlinks removed, about 20 minutes at 12 threads on a Ryzen 5850U (a second build host, build.slice).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "SailfishOS/mainline_porting.json own_kernel_tree.build_without_nix; Pro1-X port repo port/kernel/build-kernel.sh"
+      },
+      {
+        "title": "Name your own kernel and make install scripts version-agnostic, keeping the old modules",
+        "general": "Set CONFIG_LOCALVERSION (e.g. -<device>) so an own kernel is never mistaken for a distro build in uname -r and /lib/modules. Install scripts should read the version from the built modules tarball (lib/modules/<version>/), run depmod per version present, keep any same-version directory as <version>.prev and leave other versions untouched, so the old kernel still boots after a rollback.",
+        "instance": "Pro1-X: 7.3.0-qx1050; sfos-kernel-install.sh, sfos-kernel-install-from-nixos.sh, stage2-device.sh and the kernel fetch script had 7.1.0 hard-coded until 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/scripts/sfos-kernel-install.sh, port/scripts/sfos-kernel-install-from-nixos.sh; port commits 2026-10-26"
+      },
+      {
+        "title": "Cross-compile natively; anything built under emulation is many times slower",
+        "general": "Cross-compile kernel and bootloader on the host. Packages that miss a binary cache and must be built as aarch64 under qemu-user (binfmt) take many times longer; budget for it and avoid customising packages that would miss the cache. qemu-user-static with binfmt is needed for such builds (restarting systemd-binfmt registers it without reboot).",
+        "instance": "Pro1-X NixOS flake on rootless podman, 2026-10-22: kernel cross-build in minutes; phosh, phoc, chatty and libcamera with local changes compiled under qemu for about 1.5 h. The nix container needed /usr/bin/qemu-aarch64-static bind-mounted and extra-platforms = aarch64-linux.",
+        "confidence": "confirmed",
+        "date": "2026-10-22",
+        "source": "port log 2026-10-22 21:22-23:25 (build logs)"
+      },
+      {
+        "title": "Nix-based kernel builds on a remote host: seed the store, sync .git, find the modules output",
+        "general": "When running nix in a container with an external /nix volume, seed the volume from the image first (cp -a /nix/. into it); an empty volume hides the image's own nix binaries. A flake evaluates the git tree, so a new patch file that is untracked, or synced without .git, is silently ignored: sync .git (or commit), run the wrapper from its own directory, and grep the build log for 'applying patch <name>'. nix build a b --out-link X names the links X, X-1; modules are a second output (nix-store -q --outputs $(nix-store -q --deriver K)).",
+        "instance": "a second build host, 2026-10-23..25: the first build ended at once until the store was seeded; then a full 7.1 kernel took about 20 minutes (12 threads, build.slice CPUQuota 1200 %, MemoryMax 12G) against about 1 h on the older host; rsync --exclude .git built without sfos-imx582-1080p.patch. Superseded by the non-Nix container build on 2026-10-26.",
+        "confidence": "confirmed",
+        "date": "2026-10-25",
+        "source": "port log 2026-10-23 21:46-23:00, 2026-10-24, 2026-10-25 13:40-14:04"
+      }
+    ],
+    "device_tree": [
+      {
+        "title": "Never hand-write DT patch hunks; check the property in the built DTB",
+        "general": "Make DT changes in a tree and generate a real diff instead of hand-writing hunks. After every build, decompile the built DTB (dtc -I dtb -O dts) and confirm the property actually changed: a build that succeeds can still carry the old DT when a hunk was dropped.",
+        "instance": "Pro1-X 2026-10-24: the slide-switch hunk of sfos-dt.patch did not land in a kernel build although the build passed; found by dumping the hall-switch node from the built DTB; the patch was regenerated with diff and rebuilt.",
+        "confidence": "confirmed",
+        "date": "2026-10-24",
+        "source": "port log 2026-10-24 00:37-00:42 (dtc dump comparison)"
+      },
+      {
+        "title": "Keep hardware facts and OS workarounds in separate DT patches",
+        "general": "Split DT changes into real hardware corrections (upstreamable) and workarounds for one OS's userspace (keep out of upstream, and preferably fix in userspace). Mixing them makes the upstream split hard and hides which change fixed what.",
+        "instance": "Pro1-X sfos-dt.patch: the keyboard backlight LED GPIO (tlmm 103) being active-low is a real DT bug; inverting the hall slide switch (tlmm 96) for mce and mapping the Fn keys to KEY_RIGHTALT are SailfishOS-only (see display_input_power.json and userspace_sailfishos.json).",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "Pro1-X port repo port/kernel/HANDOVER.md, port/notes/upstream.md"
+      },
+      {
+        "title": "Validate DT against the bindings before calling a board done",
+        "general": "Bindings are YAML json-schema checked with make dt_binding_check; board DTS files are checked with make dtbs_check (and dt-check-style), and a new board must add no warnings. Every compatible used in a DTS, including the board's top-level compatible, must be documented in a binding first. Details of the submission rules are in upstreaming.json.",
+        "instance": "Not yet run on the Pro1-X series; the new camera, keyboard, haptics and amplifier drivers have no bindings yet (see upstreaming.json).",
+        "confidence": "reported",
+        "date": "2026-10-27",
+        "source": "https://docs.kernel.org/devicetree/bindings/submitting-patches.html; https://docs.kernel.org/process/maintainer-soc.html"
+      }
+    ],
+    "first_boot_and_known_bugs": [
+      {
+        "title": "Check every subsystem on the first boot of a new kernel",
+        "general": "After a rebase or a new base, check every subsystem on first boot: failed units, dmesg err/crit, the probe of each sensor and driver, sound server sinks, modem, Wi-Fi, Bluetooth, battery, input, LEDs, brightness. A written checklist turns this into minutes and catches regressions before they are blamed on userspace.",
+        "instance": "Pro1-X 7.1 (NixOS flake kernel, 2026-10-22/23): Mesa 26.2.3 msm GLES 3.2 in hardware, modem/adsp/cdsp remoteprocs running, Wi-Fi, brightness with a proper dark minimum, battery and charging readout, multitouch; RTC starts at 1970 until NTP. Pro1-X 7.3.0-qx1050 with SailfishOS 5.1.0.11 (2026-10-26, 3 h 44 min uptime): everything probed first time, including both camera sensors and the lens without a rebind, Venus encoder/decoder, the sound card with PulseAudio sink and source, modem with IPA interfaces, Wi-Fi, Bluetooth (pairing and A2DP music), battery charging, keyboard, touch, haptics, jack, power key; remaining log errors were policies-setup.service (usb-moded, not kernel), one 'Failed to write display brightness: -22' and an a630_sqe.fw message in early boot.",
+        "confidence": "confirmed",
+        "date": "2026-10-26",
+        "source": "port log 2026-10-22 21:43, 2026-10-26 20:40; moWerk test report 2026-10-26 21:17"
+      },
+      {
+        "title": "Keep kernel gaps in their own list",
+        "general": "Track kernel-side gaps separately from userspace gaps; they go to the kernel tree, not the distro config, and reference-OS behaviour tells which list an item belongs on (a defect present on the reference OS too is kernel or hardware level).",
+        "instance": "Pro1-X open kernel items as of 2026-10-27: microSD not detected (sdhci_msm has its card-detect GPIO but reports no card); Bluetooth dead after a power-down; speaker pops at boot and USB plug (also on NixOS; see audio.json); panel backlight write EINVAL (see display_input_power.json); wcd937x warnings on the voice path (see audio.json); intermittent camera sensor I2C timeout at boot on 7.1 (see camera.json).",
+        "confidence": "confirmed",
+        "date": "2026-10-27",
+        "source": "port log 2026-10-23 (ground truth, test round 19:46); Pro1-X port repo port/README.md"
+      },
+      {
+        "title": "WCN399x Bluetooth never answers again after a power-down",
+        "general": "On Qualcomm WCN399x Bluetooth over hci_uart_qca, the controller works when enabled from boot but after a power-down it never answers again (0xfc00 tx timeout), and unbinding the driver warns of an unbalanced regulator refcount. Treat it as a kernel regulator/power-sequencing bug; in userspace, avoid powering Bluetooth down until fixed.",
+        "instance": "Pro1-X (Bluetooth part WCN3950, driven by the wcn399x/hci_uart_qca code; firmware cmbtfw12 loads), Linux 7.1, 2026-10-23; the SailfishOS Bluetooth toggle blinked forever.",
+        "confidence": "confirmed",
+        "date": "2026-10-23",
+        "source": "SailfishOS/mainline_porting.json dual_boot_nixos.bluetooth_repower; dmesg 2026-10-23 21:01; Pro1-X port repo port/notes/upstream.md"
+      }
+    ]
+  }
 }
